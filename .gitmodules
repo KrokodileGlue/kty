@@ -1,0 +1,3 @@
+[submodule "kdg"]
+	path = kdg
+	url = http://github.com/KrokodileGlue/kdg
