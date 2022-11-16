@@ -1,5 +1,9 @@
 #include <stdlib.h>
 
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/tttables.h>
@@ -28,6 +32,9 @@ struct font {
 
 /* Global kty state. */
 struct kty {
+        /* PTY */
+        int master;
+
         /* OpenGL */
         GLuint program;
 
@@ -351,12 +358,14 @@ void display(struct kty *k)
                 previous_time += 1.0;
         }
 
-        render_text(k, buf, -1 + 8 * sx, 1 - (16 * 1) * sy, sx, sy);
-        render_text(k, "bonk", -1 + 8 * sx, 1 - (16 * 7) * sy, sx, sy);
-        render_text(k, "<🤡🎃🧠>", -1 + 8 * sx, 1 - (16 * 8) * sy, sx, sy);
-        render_text(k, "haha hello", -1 + 8 * sx, 1 - (16 * 9) * sy, sx, sy);
-        render_text(k, "炎鋭威", -1 + 8 * sx, 1 - (16 * 10) * sy, sx, sy);
-        render_text(k, "＼：Ｄ／", -1 + 8 * sx, 1 - (16 * 11) * sy, sx, sy);
+        static char history[10000];
+        static int history_len = 0;
+        static int lineno = 0;
+        char c[] = { 0, 0 };
+        read(k->master, c, 1);
+        history[history_len++] = c[0];
+        history[history_len] = 0;
+        render_text(k, history, -1 + 8 * sx, 1 - (16 * 1) * sy, sx, sy);
 }
 
 void free_resources(struct kty *k)
@@ -396,10 +405,68 @@ int load_fonts(struct kty *k)
         return 0;
 }
 
-int main(void)
+int main(int argc, char **argv, char **env)
 {
+        /* Set up the PTY. */
+        int master = posix_openpt(O_RDWR | O_NOCTTY);
+
+        if (master == -1) {
+                perror("posix_openpt");
+                return 1;
+        }
+
+        if (grantpt(master) == -1) {
+                perror("grantpt");
+                return 1;
+        }
+
+        if (unlockpt(master) == -1) {
+                perror("unlockpt");
+                return 1;
+        }
+
+        const char *slave_name = ptsname(master);
+
+        if (!slave_name) {
+                perror("ptsname");
+                return 1;
+        }
+
+        puts(slave_name);
+
+        int slave = open(slave_name, O_RDWR | O_NOCTTY);
+
+        if (slave == -1) {
+                perror("open");
+                return 1;
+        }
+
+        int p = fork();
+
+        if (!p) {
+                close(master);
+
+                setsid();
+                if (ioctl(slave, TIOCSCTTY, NULL) == -1) {
+                        perror("ioctl");
+                        return 1;
+                }
+
+                dup2(slave, 0);
+                dup2(slave, 1);
+                dup2(slave, 2);
+                close(slave);
+
+                execle("/bin/bash", "/bin/bash", NULL, env);
+        } else {
+                close(slave);
+        }
+
+        /* The shell is running, now set up the window/graphics. */
         struct kty *k = malloc(sizeof *k);
         if (!k) return 1;
+
+        k->master = master;
 
         if (!glfwInit()) return 1;
 
