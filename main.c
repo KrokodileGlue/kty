@@ -17,7 +17,7 @@
 
 struct font {
         const char *path;         /* The path that this font was loaded from. */
-        int is_color_emoji_font;
+        int is_color_font;
 
         FT_Face face;
         FT_Render_Mode render_mode;
@@ -36,7 +36,7 @@ struct kty {
         GLint uniform_color;
         GLint uniform_is_color;
 
-        GLuint vbo;                  /* Regular/emoji shaders can share this. */
+        GLuint vbo;
 
         /* FreeType */
         FT_Library ft;
@@ -181,7 +181,7 @@ int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float 
                 uint32_t glyph_index = FT_Get_Char_Index(face, c);
                 if (!glyph_index) continue;
 
-                if (f->is_color_emoji_font) {
+                if (f->is_color_font) {
                         if (!face->num_fixed_sizes) return 1;
 
                         int best_match = 0;
@@ -275,7 +275,7 @@ int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float 
         return 0;
 }
 
-int is_color_emoji_font(FT_Face face)
+int is_color_font(FT_Face face)
 {
         static const uint32_t tag = FT_MAKE_TAG('C', 'B', 'D', 'T');
         unsigned long length = 0;
@@ -387,7 +387,7 @@ int load_fonts(struct kty *k)
                 k->fonts[k->num_fonts++] = (struct font){
                         .path = path[i],
                         .face = face,
-                        .is_color_emoji_font = is_color_emoji_font(face),
+                        .is_color_font = is_color_font(face),
                         .render_mode = FT_RENDER_MODE_NORMAL,
                         .load_flags = 0,
                 };
