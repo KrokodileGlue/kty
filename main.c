@@ -2,25 +2,48 @@
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include <freetype/tttables.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GLFW/glfw3.h>
 
+#include "kdg/include/kdgu.h"
+
+/* No one will ever need more than 16 fonts. */
+#define MAX_FONTS 16
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 300
+#define FONT_SIZE 18
+
+struct font {
+        const char *path;         /* The path that this font was loaded from. */
+        int is_color_emoji_font;
+
+        FT_Face face;
+        FT_Render_Mode render_mode;
+
+        int pixel_size;
+        int load_flags;
+};
 
 /* Global kty state. */
 struct kty {
+        /* OpenGL */
         GLuint program;
 
         GLint attribute_coord;
         GLint uniform_tex;
         GLint uniform_color;
+        GLint uniform_is_color;
 
-        GLuint vbo;
+        GLuint vbo;                  /* Regular/emoji shaders can share this. */
 
+        /* FreeType */
         FT_Library ft;
-        FT_Face face;
+
+        /* Fonts */
+        struct font fonts[MAX_FONTS];
+        int num_fonts;
 };
 
 int print_gl_error_log(GLuint object)
@@ -67,9 +90,9 @@ GLint create_shader(const GLchar *source, GLenum type)
         return res;
 }
 
-int bind_uniform_to_program(struct kty *k, const char *name)
+int bind_uniform_to_program(GLuint program, const char *name)
 {
-        int coord = glGetUniformLocation(k->program, name);
+        int coord = glGetUniformLocation(program, name);
 
         if (coord < 0) {
                 fprintf(stderr, "Couldn't bind uniform %s\n", name);
@@ -79,9 +102,9 @@ int bind_uniform_to_program(struct kty *k, const char *name)
         return coord;
 }
 
-int bind_attribute_to_program(struct kty *k, const char *name)
+int bind_attribute_to_program(GLuint program, const char *name)
 {
-        int coord = glGetAttribLocation(k->program, name);
+        int coord = glGetAttribLocation(program, name);
 
         if (coord < 0) {
                 fprintf(stderr, "Couldn't bind attribute %s\n", name);
@@ -93,7 +116,7 @@ int bind_attribute_to_program(struct kty *k, const char *name)
 
 int init_gl_resources(struct kty *k)
 {
-        const char vshader[] = "#version 120\n\
+        const char vs[] = "#version 120\n\
 attribute vec4 coord;\n\
 varying vec2 texpos;\n\
 void main(void) {\n\
@@ -101,24 +124,27 @@ void main(void) {\n\
         texpos = coord.zw;\n\
 }";
 
-        const char fshader[] = "#version 120\n\
+        const char fs[] = "#version 120\n\
 varying vec2 texpos;\n\
 uniform sampler2D tex;\n\
 uniform vec4 color;\n\
+uniform bool is_color;\n\
 void main(void) {\n\
-        gl_FragColor = vec4(1, 1, 1, texture2D(tex, texpos).a) * color;\n\
+        gl_FragColor = is_color\n\
+                ? texture2D(tex, texpos).rgba\n\
+                : vec4(1, 1, 1, texture2D(tex, texpos).a) * color;\n\
 }";
 
         /* Compile each shader. */
-        GLuint vs = create_shader(vshader, GL_VERTEX_SHADER);
-        GLuint fs = create_shader(fshader, GL_FRAGMENT_SHADER);
+        GLuint gvs = create_shader(vs, GL_VERTEX_SHADER);
+        GLuint gfs = create_shader(fs, GL_FRAGMENT_SHADER);
 
-        if (!vs || !fs) return 1;
+        if (!gvs || !gfs) return 1;
 
         /* Create the program and link the shaders. */
         k->program = glCreateProgram();
-        glAttachShader(k->program, vs);
-        glAttachShader(k->program, fs);
+        glAttachShader(k->program, gvs);
+        glAttachShader(k->program, gfs);
         glLinkProgram(k->program);
 
         /* Now check that everything compiled and linked okay. */
@@ -131,9 +157,10 @@ void main(void) {\n\
                 return 1;
         }
 
-        k->attribute_coord = bind_attribute_to_program(k, "coord");
-        k->uniform_tex = bind_uniform_to_program(k, "tex");
-        k->uniform_color = bind_uniform_to_program(k, "color");
+        k->attribute_coord = bind_attribute_to_program(k->program, "coord");
+        k->uniform_tex = bind_uniform_to_program(k->program, "tex");
+        k->uniform_color = bind_uniform_to_program(k->program, "color");
+        k->uniform_is_color = bind_uniform_to_program(k->program, "is_color");
 
         /* Get a free VBO number. */
         glGenBuffers(1, &k->vbo);
@@ -141,15 +168,123 @@ void main(void) {\n\
         return 0;
 }
 
-/**
- * Render text using the currently loaded font and currently set font size.
- * Rendering starts at coordinates (x, y), z is always 0.
- * The pixel coordinates that the FreeType2 library uses are scaled by (sx, sy).
- */
+int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float sy)
+{
+        struct font *f = NULL;
+        int load_flags = FT_LOAD_COLOR;
+
+        for (int i = 0; i < k->num_fonts; i++) {
+                f = k->fonts + i;
+                FT_Face face = f->face;
+                FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
+
+                uint32_t glyph_index = FT_Get_Char_Index(face, c);
+                if (!glyph_index) continue;
+
+                if (f->is_color_emoji_font) {
+                        if (!face->num_fixed_sizes) return 1;
+
+                        int best_match = 0;
+                        int diff = abs(FONT_SIZE - face->available_sizes[0].width);
+
+                        for (int i = 1; i < face->num_fixed_sizes; i++) {
+                                int ndiff = abs(FONT_SIZE - face->available_sizes[i].width);
+                                if (ndiff < diff) {
+                                        best_match = i;
+                                        diff = ndiff;
+                                }
+                        }
+
+                        FT_Select_Size(face, best_match);
+
+                        if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
+                        if (FT_Render_Glyph(face->glyph, f->render_mode)) continue;
+                } else {
+                        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
+                }
+
+                break;
+        }
+
+        if (!f) {
+                fprintf(stderr, "No glyph found for U+%x\n", c);
+                return 1;
+        }
+
+        FT_GlyphSlot slot = f->face->glyph;
+
+        if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {
+                glUniform1i(k->uniform_is_color, 1);
+                glTexImage2D(GL_TEXTURE_2D,                         /* target */
+                        0,                                     /* GLint level */
+                        4,                      /* GLint internalformat */
+                        slot->bitmap.width,                  /* GLsizei width */
+                        slot->bitmap.rows,                  /* GLsizei height */
+                        0,                                    /* GLint border */
+                        GL_BGRA,                             /* GLenum format */
+                        GL_UNSIGNED_BYTE,                      /* GLenum type */
+                        slot->bitmap.buffer);             /* const void * dat */
+        } else {
+                glUniform1i(k->uniform_is_color, 0);
+                glTexImage2D(GL_TEXTURE_2D,                         /* target */
+                        0,                                     /* GLint level */
+                        GL_ALPHA,                     /* GLint internalformat */
+                        slot->bitmap.width,                  /* GLsizei width */
+                        slot->bitmap.rows,                  /* GLsizei height */
+                        0,                                    /* GLint border */
+                        GL_ALPHA,                            /* GLenum format */
+                        GL_UNSIGNED_BYTE,                      /* GLenum type */
+                        slot->bitmap.buffer);             /* const void * dat */
+        }
+
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        FT_Glyph_Metrics metrics = slot->metrics;
+
+        float tmp = metrics.width * 1.0/64.0;
+        if (tmp > FONT_SIZE * 2) {
+                float s = (FONT_SIZE * 2.0) / tmp;
+                sx *= s;
+                sy *= s;
+        }
+
+        /* Calculate the vertex and texture coordinates */
+        float x2 = *x + metrics.horiBearingX * 1.0/64.0 * sx;
+        float y2 = -*y - slot->bitmap_top * sy;
+        float w = metrics.width * 1.0/64.0 * sx;
+        float h = metrics.height * 1.0/64.0 * sy;
+
+        struct point {
+                GLfloat x;
+                GLfloat y;
+                GLfloat s;
+                GLfloat t;
+        } box[4] = {
+                { x2    , -y2    , 0, 0 },
+                { x2 + w, -y2    , 1, 0 },
+                { x2    , -y2 - h, 0, 1 },
+                { x2 + w, -y2 - h, 1, 1 },
+        };
+
+        glBufferData(GL_ARRAY_BUFFER, sizeof box, box, GL_DYNAMIC_DRAW);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        *x += metrics.horiAdvance * 1.0/64.0 * sx;
+        //*y += metrics.vertAdvance * 1.0/64.0 * sy;
+
+        return 0;
+}
+
+int is_color_emoji_font(FT_Face face)
+{
+        static const uint32_t tag = FT_MAKE_TAG('C', 'B', 'D', 'T');
+        unsigned long length = 0;
+        FT_Load_Sfnt_Table(face, tag, 0, NULL, &length);
+        return !!length;
+}
+
 void render_text(struct kty *k, const char *text, float x, float y, float sx, float sy)
 {
-        FT_GlyphSlot g = k->face->glyph;
-
         GLuint tex;
         glActiveTexture(GL_TEXTURE0);
         glGenTextures(1, &tex);
@@ -161,50 +296,23 @@ void render_text(struct kty *k, const char *text, float x, float y, float sx, fl
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         glEnableVertexAttribArray(k->attribute_coord);
         glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
         glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
-        for (const char *c = text; *c; c++) {
-                if (FT_Load_Char(k->face, *c, FT_LOAD_RENDER))
-                        continue;
+        kdgu *s = kdgu_news(text);
+        unsigned idx = 0;
+        uint32_t c = kdgu_decode(s, idx);
+        render_glyph(k, c, &x, &y, sx, sy);
 
-                glTexImage2D(GL_TEXTURE_2D,
-                        0,
-                        GL_ALPHA,
-                        g->bitmap.width,
-                        g->bitmap.rows,
-                        0,
-                        GL_ALPHA,
-                        GL_UNSIGNED_BYTE,
-                        g->bitmap.buffer);
-
-                /* Calculate the vertex and texture coordinates */
-                float x2 = x + g->bitmap_left * sx;
-                float y2 = -y - g->bitmap_top * sy;
-                float w = g->bitmap.width * sx;
-                float h = g->bitmap.rows * sy;
-
-                struct point {
-                        GLfloat x;
-                        GLfloat y;
-                        GLfloat s;
-                        GLfloat t;
-                } box[4] = {
-                        { x2    , -y2    , 0, 0 },
-                        { x2 + w, -y2    , 1, 0 },
-                        { x2    , -y2 - h, 0, 1 },
-                        { x2 + w, -y2 - h, 1, 1 },
-                };
-
-                glBufferData(GL_ARRAY_BUFFER, sizeof box, box, GL_DYNAMIC_DRAW);
-                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-                x += (g->advance.x >> 6) * sx;
-                y += (g->advance.y >> 6) * sy;
+        while (kdgu_next(s, &idx)) {
+                c = kdgu_decode(s, idx);
+                if (c == (uint32_t)-1) continue;
+                if (render_glyph(k, c, &x, &y, sx, sy))
+                        fprintf(stderr, "Couldn't render code point U+%x\n", c);
         }
 
         glDisableVertexAttribArray(k->attribute_coord);
@@ -216,16 +324,15 @@ void display(struct kty *k)
         float sx = 2.0 / WINDOW_WIDTH;
         float sy = 2.0 / WINDOW_HEIGHT;
 
-        glUseProgram(k->program);
-        glClearColor(1, 1, 1, 1);
+        glClearColor(0.1, 0.1, 0.1, 1);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(k->program);
 
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0, 0, 1 });
-
-        FT_Set_Pixel_Sizes(k->face, 0, 12);
+        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0.5, 1, 1 });
 
         /* Set up a quick FPS counter. */
         static double previous_time = 0, current_time = 0;
@@ -245,6 +352,11 @@ void display(struct kty *k)
         }
 
         render_text(k, buf, -1 + 8 * sx, 1 - (16 * 1) * sy, sx, sy);
+        render_text(k, "bonk", -1 + 8 * sx, 1 - (16 * 7) * sy, sx, sy);
+        render_text(k, "<🤡🎃🧠>", -1 + 8 * sx, 1 - (16 * 8) * sy, sx, sy);
+        render_text(k, "haha hello", -1 + 8 * sx, 1 - (16 * 9) * sy, sx, sy);
+        render_text(k, "炎鋭威", -1 + 8 * sx, 1 - (16 * 10) * sy, sx, sy);
+        render_text(k, "＼：Ｄ／", -1 + 8 * sx, 1 - (16 * 11) * sy, sx, sy);
 }
 
 void free_resources(struct kty *k)
@@ -252,16 +364,33 @@ void free_resources(struct kty *k)
         glDeleteProgram(k->program);
 }
 
-int init_freetype(struct kty *k)
+int load_fonts(struct kty *k)
 {
-        if (FT_Init_FreeType(&k->ft)) {
-                fprintf(stderr, "Could not init freetype library\n");
-                return 1;
-        }
+        /* TODO: Get fonts from command line options. */
 
-        if (FT_New_Face(k->ft, "SourceCodePro-Regular.otf", 0, &k->face)) {
-                fprintf(stderr, "Could not open font\n");
-                return 1;
+        const char *path[] = {
+                "SourceCodePro-Regular.otf",
+                "NotoColorEmoji.ttf",
+                "NotoSansCJK-Regular.ttc",
+        };
+
+        int num_path = 3;
+
+        for (int i = 0; i < num_path; i++) {
+                FT_Face face;
+
+                if (FT_New_Face(k->ft, path[i], 0, &face)) {
+                        fprintf(stderr, "Could not open font ‘%s’\n", path[i]);
+                        return 1;
+                }
+
+                k->fonts[k->num_fonts++] = (struct font){
+                        .path = path[i],
+                        .face = face,
+                        .is_color_emoji_font = is_color_emoji_font(face),
+                        .render_mode = FT_RENDER_MODE_NORMAL,
+                        .load_flags = 0,
+                };
         }
 
         return 0;
@@ -290,7 +419,13 @@ int main(void)
         glfwMakeContextCurrent(window);
 
         /* Initialize FreeType. */
-        if (init_freetype(k)) return 1;
+        if (FT_Init_FreeType(&k->ft)) {
+                fprintf(stderr, "Could not init FreeType\n");
+                return 1;
+        }
+
+        /* Load fonts. */
+        if (load_fonts(k)) return 1;
 
         /* Initialize GLEW. */
         GLenum glew_status = glewInit();
