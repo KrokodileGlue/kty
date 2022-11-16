@@ -360,7 +360,6 @@ void display(struct kty *k)
 
         static char history[10000];
         static int history_len = 0;
-        static int lineno = 0;
         char c[] = { 0, 0 };
         read(k->master, c, 1);
         history[history_len++] = c[0];
@@ -405,7 +404,7 @@ int load_fonts(struct kty *k)
         return 0;
 }
 
-int main(int argc, char **argv, char **env)
+int main(int, char **, char **env)
 {
         /* Set up the PTY. */
         int master = posix_openpt(O_RDWR | O_NOCTTY);
