@@ -341,23 +341,7 @@ void display(struct kty *k)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0.5, 1, 1 });
 
-        /* Set up a quick FPS counter. */
-        static double previous_time = 0, current_time = 0;
-        static int frame_count = 0;
-        static char buf[256];
-
-        current_time = glfwGetTime();
-        frame_count++;
-
-        if (current_time - previous_time >= 1.0) {
-                printf("%f ms/frame\n", 1000.0 / (double)frame_count);
-                snprintf(buf, sizeof buf, "%f ms/frame (%f fps)",
-                        1000.0 / (double)frame_count,
-                        (double)frame_count);
-                frame_count = 0;
-                previous_time += 1.0;
-        }
-
+        /* TODO: Implement history/scrolling. */
         static char history[10000];
         static int history_len = 0;
         char c[] = { 0, 0 };
