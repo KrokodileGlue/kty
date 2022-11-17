@@ -290,7 +290,7 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
                 glUniform1i(k->uniform_is_color, 1);
                 glTexImage2D(GL_TEXTURE_2D,                         /* target */
                         0,                                     /* GLint level */
-                        4,                      /* GLint internalformat */
+                        4,                            /* GLint internalformat */
                         slot->bitmap.width,                  /* GLsizei width */
                         slot->bitmap.rows,                  /* GLsizei height */
                         0,                                    /* GLint border */
