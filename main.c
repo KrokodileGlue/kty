@@ -29,6 +29,10 @@
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
 
+enum {
+        ESC = 0x1B,
+};
+
 struct font {
         const char *path;         /* The path that this font was loaded from. */
         int is_color_font;
@@ -38,6 +42,22 @@ struct font {
 
         int pixel_size;
         int load_flags;
+};
+
+struct glyph {
+        uint32_t c;
+        enum {
+                GLYPH_NONE = 0,
+                GLYPH_WRAP = 1 << 0,
+        } mode;
+};
+
+struct cursor {
+        int x, y;
+};
+
+struct window {
+        int cw, ch;
 };
 
 /* Global kty state. */
@@ -65,8 +85,39 @@ struct kty {
         int num_fonts;
 
         /* State */
-        int x, y;                                          /* Cursor position */
+        struct window w;
+        int col, row;
+        struct cursor c;
+        struct glyph **line;
 };
+
+void tresize(struct kty *k, int col, int row)
+{
+        printf("resize(%d,%d)\n", col, row);
+
+        k->line = realloc(k->line, row * sizeof *k->line);
+
+        for (int i = 0; i < row - k->row; i++) {
+                k->line[i] = calloc(k->col * sizeof *k->line[i], 1);
+        }
+
+        for (int i = 0; i < row; i++) {
+                k->line[i] = realloc(k->line[i], col * sizeof *k->line[i]);
+        }
+
+        k->col = col;
+        k->row = row;
+}
+
+void tputc(struct kty *k, uint32_t c)
+{
+        printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
+
+        k->line[k->c.y][k->c.x] = (struct glyph){
+                .c = c,
+                .mode = GLYPH_NONE,
+        };
+}
 
 int print_gl_error_log(GLuint object)
 {
@@ -190,7 +241,7 @@ void main(void) {\n\
         return 0;
 }
 
-int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float sy)
+int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
 {
         struct font *f = NULL;
         int load_flags = FT_LOAD_COLOR;
@@ -271,8 +322,10 @@ int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float 
         }
 
         /* Calculate the vertex and texture coordinates */
-        float x2 = *x + metrics.horiBearingX * 1.0/64.0 * sx;
-        float y2 = -*y - slot->bitmap_top * sy;
+        float x = -1 + (8 * (1 + x0)) * sx;
+        float y = 1 - (16 * (1 + y0)) * sy;
+        float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
+        float y2 = -y - slot->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
 
@@ -291,9 +344,6 @@ int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float 
         glBufferData(GL_ARRAY_BUFFER, sizeof box, box, GL_DYNAMIC_DRAW);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-        *x += metrics.horiAdvance * 1.0/64.0 * sx;
-        //*y += metrics.vertAdvance * 1.0/64.0 * sy;
-
         return 0;
 }
 
@@ -305,38 +355,20 @@ int is_color_font(FT_Face face)
         return !!length;
 }
 
-void render_text(struct kty *k, const char *text, float x, float y, float sx, float sy)
-{
-        kdgu *s = kdgu_news(text);
-        unsigned idx = 0;
-        uint32_t c = kdgu_decode(s, idx);
-        render_glyph(k, c, &x, &y, sx, sy);
-
-        while (kdgu_next(s, &idx)) {
-                c = kdgu_decode(s, idx);
-                if (c == (uint32_t)-1) continue;
-                if (render_glyph(k, c, &x, &y, sx, sy))
-                        fprintf(stderr, "Couldn't render code point U+%x\n", c);
-        }
-}
-
 void display(struct kty *k)
 {
+        glClearColor(0.1, 0.1, 0.1, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
         float sx = 2.0 / WINDOW_WIDTH;
         float sy = 2.0 / WINDOW_HEIGHT;
 
-        char c;
-        read(k->master, &c, 1);
-        render_text(k, (char []){ c, 0 },
-                -1 + (8 * (1 + k->x)) * sx,
-                1 - (16 * (1 + k->y)) * sy, sx, sy);
-        k->x++;
-        if (c == '\n') {
-                k->x = 0;
-                k->y++;
+        for (int i = 0; i < k->row; i++) {
+                for (int j = 0; j < k->col; j++) {
+                        render_glyph(k, k->line[i][j].c, j, i, sx, sy);
+                }
         }
 
-        glFlush();
 }
 
 void free_resources(struct kty *k)
@@ -354,14 +386,20 @@ int load_fonts(struct kty *k)
                 "NotoSansCJK-Regular.ttc",
         };
 
-        int num_path = 3;
-
-        for (int i = 0; i < num_path; i++) {
+        for (int i = 0; i < sizeof path / sizeof *path; i++) {
                 FT_Face face;
 
                 if (FT_New_Face(k->ft, path[i], 0, &face)) {
                         fprintf(stderr, "Could not open font ‘%s’\n", path[i]);
                         return 1;
+                }
+
+                if (!i) {
+                        FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
+                        FT_GlyphSlot slot = face->glyph;
+                        k->w.cw = slot->metrics.horiAdvance / 64.0;
+                        k->w.ch = slot->metrics.vertAdvance / 64.0;
+                        printf("%d,%d\n", k->w.cw, k->w.ch);
                 }
 
                 k->fonts[k->num_fonts++] = (struct font){
@@ -378,16 +416,31 @@ int load_fonts(struct kty *k)
 
 struct kty *k;
 
-void character_callback(GLFWwindow *window, unsigned int c)
+void character_callback(GLFWwindow *window, unsigned c)
 {
-        kdgu *s = kdgu_new(KDGU_FMT_UTF8, (uint8_t *)&c, sizeof c);
-        write(k->master, s->s, s->len);
+        uint8_t buf[100];
+        unsigned len;
+        kdgu_encode(c, buf, &len, KDGU_FMT_UTF8, 0, KDGU_ENDIAN_NONE);
+        write(k->master, buf, len);
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
-        if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+        if (action != GLFW_PRESS) return;
+
+        switch (key) {
+        case GLFW_KEY_ENTER:
                 write(k->master, (char []){'\n'}, 1);
+                break;
+        case GLFW_KEY_BACKSPACE:
+                write(k->master, (char []){8}, 1);
+                break;
+        }
+}
+
+void window_size_callback(GLFWwindow *window, int width, int height)
+{
+        tresize(k, width / k->w.cw, height / k->w.ch);
 }
 
 int main(int, char **, char **env)
@@ -455,7 +508,7 @@ int main(int, char **, char **env)
 
         if (!glfwInit()) return 1;
 
-        glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
+        //glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 
         GLFWwindow *window = glfwCreateWindow(
                 WINDOW_WIDTH,
@@ -474,6 +527,7 @@ int main(int, char **, char **env)
 
         glfwSetCharCallback(window, character_callback);
         glfwSetKeyCallback(window, key_callback);
+        glfwSetWindowSizeCallback(window, window_size_callback);
 
         k->x11_display = glfwGetX11Display();
 
@@ -499,11 +553,12 @@ int main(int, char **, char **env)
                 return 1;
         }
 
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+        tresize(k, width, height);
+
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
-
-        glClearColor(0.1, 0.1, 0.1, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(k->program);
 
@@ -546,9 +601,55 @@ int main(int, char **, char **env)
 
                 if (FD_ISSET(k->master, &readable))
                 {
-                        display(k);
+                        static char buf[100];
+                        static int n = 0;
+
+                        char c;
+                        read(k->master, &c, 1);
+
+                        switch (c) {
+                        case ESC:
+                                read(k->master, &c, 1);
+
+                                switch (c) {
+                                case '[':
+                                        read(k->master, &c, 1);
+
+                                        switch (c) {
+                                        case 'K':
+                                                for (int i = k->c.x; i < k->row; i++)
+                                                        k->line[k->c.y][i].c = 0;
+                                                break;
+                                        }
+                                        break;
+                                }
+                                break;
+                        case '\n':
+                                k->c.x = 0;
+                                k->c.y++;
+                                break;
+                        case 7:
+                                /* bell */
+                                break;
+                        case 8:
+                                k->c.x--;
+                                break;
+                        default:
+                                buf[n++] = c;
+
+                                kdgu *s = kdgu_new(KDGU_FMT_UTF8, buf, n);
+                                if (s->errlist) continue;
+
+                                n = 0;
+                                uint32_t codepoint = kdgu_decode(s, 0);
+
+                                tputc(k, codepoint);
+                                k->c.x++;
+                        }
                 }
 
+                display(k);
+                glfwSwapBuffers(window);
                 glfwPollEvents();
         }
 
