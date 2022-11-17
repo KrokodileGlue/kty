@@ -16,8 +16,8 @@
 /* No one will ever need more than 16 fonts. */
 #define MAX_FONTS 16
 #define WINDOW_WIDTH 600
-#define WINDOW_HEIGHT 300
-#define FONT_SIZE 18
+#define WINDOW_HEIGHT 700
+#define FONT_SIZE 12
 
 struct font {
         const char *path;         /* The path that this font was loaded from. */
@@ -51,6 +51,9 @@ struct kty {
         /* Fonts */
         struct font fonts[MAX_FONTS];
         int num_fonts;
+
+        /* State */
+        int x, y;                                          /* Cursor position */
 };
 
 int print_gl_error_log(GLuint object)
@@ -242,9 +245,9 @@ int render_glyph(struct kty *k, uint32_t c, float *x, float *y, float sx, float 
                         GL_ALPHA,                            /* GLenum format */
                         GL_UNSIGNED_BYTE,                      /* GLenum type */
                         slot->bitmap.buffer);             /* const void * dat */
-        }
 
-        glGenerateMipmap(GL_TEXTURE_2D);
+                glGenerateMipmap(GL_TEXTURE_2D);
+        }
 
         FT_Glyph_Metrics metrics = slot->metrics;
 
@@ -292,23 +295,6 @@ int is_color_font(FT_Face face)
 
 void render_text(struct kty *k, const char *text, float x, float y, float sx, float sy)
 {
-        GLuint tex;
-        glActiveTexture(GL_TEXTURE0);
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1i(k->uniform_tex, 0);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glEnableVertexAttribArray(k->attribute_coord);
-        glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
-        glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
         kdgu *s = kdgu_news(text);
         unsigned idx = 0;
@@ -321,9 +307,6 @@ void render_text(struct kty *k, const char *text, float x, float y, float sx, fl
                 if (render_glyph(k, c, &x, &y, sx, sy))
                         fprintf(stderr, "Couldn't render code point U+%x\n", c);
         }
-
-        glDisableVertexAttribArray(k->attribute_coord);
-        glDeleteTextures(1, &tex);
 }
 
 void display(struct kty *k)
@@ -331,24 +314,19 @@ void display(struct kty *k)
         float sx = 2.0 / WINDOW_WIDTH;
         float sy = 2.0 / WINDOW_HEIGHT;
 
-        glClearColor(0.1, 0.1, 0.1, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glUseProgram(k->program);
-
-        /* Enabling blending allows us to use alpha textures. */
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0.5, 1, 1 });
-
         /* TODO: Implement history/scrolling. */
-        static char history[10000];
-        static int history_len = 0;
-        char c[] = { 0, 0 };
-        read(k->master, c, 1);
-        history[history_len++] = c[0];
-        history[history_len] = 0;
-        render_text(k, history, -1 + 8 * sx, 1 - (16 * 1) * sy, sx, sy);
+        char c;
+        read(k->master, &c, 1);
+        render_text(k, (char []){ c, 0 },
+                -1 + (8 * (1 + k->x)) * sx,
+                1 - (16 * (1 + k->y)) * sy, sx, sy);
+        k->x++;
+        if (c == '\n') {
+                k->x = 0;
+                k->y++;
+        }
+
+        glFlush();
 }
 
 void free_resources(struct kty *k)
@@ -440,18 +418,20 @@ int main(int, char **, char **env)
                 dup2(slave, 2);
                 close(slave);
 
-                execle("/bin/bash", "/bin/bash", NULL, env);
+                execle("/bin/sh", "/bin/sh", NULL, env);
         } else {
                 close(slave);
         }
 
         /* The shell is running, now set up the window/graphics. */
-        struct kty *k = malloc(sizeof *k);
+        struct kty *k = calloc(sizeof *k, 1);
         if (!k) return 1;
 
         k->master = master;
 
         if (!glfwInit()) return 1;
+
+        glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
 
         GLFWwindow *window = glfwCreateWindow(
                 WINDOW_WIDTH,
@@ -490,14 +470,47 @@ int main(int, char **, char **env)
                 return 1;
         }
 
+        write(k->master, "cat main.c\n", 11);
+
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
+
+        glClearColor(0.1, 0.1, 0.1, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(k->program);
+
+        /* Enabling blending allows us to use alpha textures. */
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0.5, 1, 1 });
+
+        GLuint tex;
+        glActiveTexture(GL_TEXTURE0);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glUniform1i(k->uniform_tex, 0);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glEnableVertexAttribArray(k->attribute_coord);
+        glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
+        glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
         while (!glfwWindowShouldClose(window)) {
                 display(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
+
+        glDisableVertexAttribArray(k->attribute_coord);
+        glDeleteTextures(1, &tex);
 
         free_resources(k);
         glfwTerminate();
