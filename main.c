@@ -1,15 +1,25 @@
+#define _XOPEN_SOURCE 600
+
 #include <stdlib.h>
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <freetype/tttables.h>
 #include <GL/glew.h>
 #include <GL/gl.h>
+
+#include <X11/Xlibint.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+
+#define GLFW_EXPOSE_NATIVE_X11
 #include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 
 #include "kdg/include/kdgu.h"
 
@@ -32,6 +42,8 @@ struct font {
 
 /* Global kty state. */
 struct kty {
+        Display *x11_display;
+
         /* PTY */
         int master;
 
@@ -295,7 +307,6 @@ int is_color_font(FT_Face face)
 
 void render_text(struct kty *k, const char *text, float x, float y, float sx, float sy)
 {
-
         kdgu *s = kdgu_news(text);
         unsigned idx = 0;
         uint32_t c = kdgu_decode(s, idx);
@@ -314,7 +325,6 @@ void display(struct kty *k)
         float sx = 2.0 / WINDOW_WIDTH;
         float sy = 2.0 / WINDOW_HEIGHT;
 
-        /* TODO: Implement history/scrolling. */
         char c;
         read(k->master, &c, 1);
         render_text(k, (char []){ c, 0 },
@@ -364,6 +374,20 @@ int load_fonts(struct kty *k)
         }
 
         return 0;
+}
+
+struct kty *k;
+
+void character_callback(GLFWwindow *window, unsigned int c)
+{
+        kdgu *s = kdgu_new(KDGU_FMT_UTF8, (uint8_t *)&c, sizeof c);
+        write(k->master, s->s, s->len);
+}
+
+void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+        if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
+                write(k->master, (char []){'\n'}, 1);
 }
 
 int main(int, char **, char **env)
@@ -424,7 +448,7 @@ int main(int, char **, char **env)
         }
 
         /* The shell is running, now set up the window/graphics. */
-        struct kty *k = calloc(sizeof *k, 1);
+        k = calloc(sizeof *k, 1);
         if (!k) return 1;
 
         k->master = master;
@@ -448,6 +472,11 @@ int main(int, char **, char **env)
 
         glfwMakeContextCurrent(window);
 
+        glfwSetCharCallback(window, character_callback);
+        glfwSetKeyCallback(window, key_callback);
+
+        k->x11_display = glfwGetX11Display();
+
         /* Initialize FreeType. */
         if (FT_Init_FreeType(&k->ft)) {
                 fprintf(stderr, "Could not init FreeType\n");
@@ -469,8 +498,6 @@ int main(int, char **, char **env)
                 fprintf(stderr, "No support for OpenGL 2.0 found\n");
                 return 1;
         }
-
-        write(k->master, "cat main.c\n", 11);
 
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
@@ -503,9 +530,25 @@ int main(int, char **, char **env)
         glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
         glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
+        fd_set readable;
+        int maxfd = k->master > k->x11_display->fd ? k->master : k->x11_display->fd;
+
         while (!glfwWindowShouldClose(window)) {
-                display(k);
-                glfwSwapBuffers(window);
+                FD_ZERO(&readable);
+                FD_SET(k->master, &readable);
+                FD_SET(k->x11_display->fd, &readable);
+
+                if (select(maxfd + 1, &readable, NULL, NULL, NULL) == -1)
+                {
+                        perror("select");
+                        return 1;
+                }
+
+                if (FD_ISSET(k->master, &readable))
+                {
+                        display(k);
+                }
+
                 glfwPollEvents();
         }
 
