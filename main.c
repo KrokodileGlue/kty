@@ -104,8 +104,7 @@ utf8chrlen(const uint8_t *s, unsigned l)
 	return i;
 }
 
-uint32_t
-utf8decode(const uint8_t *s, unsigned l)
+uint32_t utf8decode(const uint8_t *s, unsigned l)
 {
 	uint32_t c;
 	unsigned len = utf8chrlen(s, l);
@@ -669,9 +668,6 @@ int main(int, char **, char **env)
 
                 if (FD_ISSET(k->master, &readable))
                 {
-                        static char buf[100];
-                        static int n = 0;
-
                         char c;
                         read(k->master, &c, 1);
 
@@ -702,10 +698,25 @@ int main(int, char **, char **env)
                         case 8:
                                 k->c.x--;
                                 break;
-                        default:
-                                buf[n++] = c;
-                                tputc(k, c);
-                                k->c.x++;
+                        default: {
+                                static uint8_t buf[4];
+                                static int n = 0;
+
+                                if (UTF8CONT(c)) {
+                                        buf[n++ + 1] = c;
+                                        k->c.x--;
+                                        tputc(k, utf8decode(buf, n + 1));
+                                        k->c.x++;
+                                } else {
+                                        if (n) {
+                                                n = 0;
+                                        }
+
+                                        tputc(k, c & 0xff);
+                                        k->c.x++;
+                                        buf[0] = c & 0xff;
+                                }
+                        }
                         }
 
                         if (!drawing) {
