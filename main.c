@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdlib.h>
+#include <time.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -28,6 +29,10 @@
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
+#define MAX_LATENCY 33
+#define MIN_LATENCY 8
+#define TIMEDIFF(t1, t2)	((t1.tv_sec-t2.tv_sec)*1000 + \
+        (t1.tv_nsec-t2.tv_nsec)/1E6)
 
 enum {
         ESC = 0x1B,
@@ -93,7 +98,7 @@ struct kty {
 
 void tresize(struct kty *k, int col, int row)
 {
-        printf("resize(%d,%d)\n", col, row);
+        printf("tresize(%d,%d)\n", col, row);
 
         k->line = realloc(k->line, row * sizeof *k->line);
 
@@ -103,6 +108,7 @@ void tresize(struct kty *k, int col, int row)
 
         for (int i = 0; i < row; i++) {
                 k->line[i] = realloc(k->line[i], col * sizeof *k->line[i]);
+                memset(k->line[i] + k->col, 0, col - k->col);
         }
 
         k->col = col;
@@ -322,8 +328,8 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
         }
 
         /* Calculate the vertex and texture coordinates */
-        float x = -1 + (8 * (1 + x0)) * sx;
-        float y = 1 - (16 * (1 + y0)) * sy;
+        float x = -1 + (k->w.cw * (1 + x0)) * sx;
+        float y = 1 - (k->w.ch * (1 + y0)) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - slot->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
@@ -395,9 +401,11 @@ int load_fonts(struct kty *k)
                 }
 
                 if (!i) {
+                        FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
                         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
                         FT_GlyphSlot slot = face->glyph;
-                        k->w.cw = slot->metrics.horiAdvance / 64.0;
+                        //k->w.cw = slot->metrics.horiAdvance / 64.0;
+                        k->w.cw = FONT_SIZE * 0.75;
                         k->w.ch = slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", k->w.cw, k->w.ch);
                 }
@@ -555,7 +563,7 @@ int main(int, char **, char **env)
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
-        tresize(k, width, height);
+        window_size_callback(window, width, height);
 
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
@@ -565,7 +573,7 @@ int main(int, char **, char **env)
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 0, 0.5, 1, 1 });
+        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 1, 1 });
 
         GLuint tex;
         glActiveTexture(GL_TEXTURE0);
@@ -588,16 +596,21 @@ int main(int, char **, char **env)
         fd_set readable;
         int maxfd = k->master > k->x11_display->fd ? k->master : k->x11_display->fd;
 
+        int drawing = 0;
+        struct timespec now, trigger;
+        double timeout = -1;
+
         while (!glfwWindowShouldClose(window)) {
                 FD_ZERO(&readable);
                 FD_SET(k->master, &readable);
                 FD_SET(k->x11_display->fd, &readable);
 
-                if (select(maxfd + 1, &readable, NULL, NULL, NULL) == -1)
-                {
+                if (select(maxfd + 1, &readable, NULL, NULL, NULL) == -1) {
                         perror("select");
                         return 1;
                 }
+
+                clock_gettime(CLOCK_MONOTONIC, &now);
 
                 if (FD_ISSET(k->master, &readable))
                 {
@@ -608,22 +621,22 @@ int main(int, char **, char **env)
                         read(k->master, &c, 1);
 
                         switch (c) {
-                        case ESC:
-                                read(k->master, &c, 1);
-
-                                switch (c) {
-                                case '[':
+                                case ESC:
                                         read(k->master, &c, 1);
 
                                         switch (c) {
-                                        case 'K':
-                                                for (int i = k->c.x; i < k->row; i++)
-                                                        k->line[k->c.y][i].c = 0;
-                                                break;
+                                                case '[':
+                                                        read(k->master, &c, 1);
+
+                                                        switch (c) {
+                                                                case 'K':
+                                                                        for (int i = k->c.x; i < k->row; i++)
+                                                                                k->line[k->c.y][i].c = 0;
+                                                                        break;
+                                                        }
+                                                        break;
                                         }
                                         break;
-                                }
-                                break;
                         case '\n':
                                 k->c.x = 0;
                                 k->c.y++;
@@ -636,18 +649,23 @@ int main(int, char **, char **env)
                                 break;
                         default:
                                 buf[n++] = c;
-
-                                kdgu *s = kdgu_new(KDGU_FMT_UTF8, buf, n);
-                                if (s->errlist) continue;
-
-                                n = 0;
-                                uint32_t codepoint = kdgu_decode(s, 0);
-
-                                tputc(k, codepoint);
+                                tputc(k, c);
                                 k->c.x++;
                         }
+
+                        if (!drawing) {
+                                trigger = now;
+                                drawing = 1;
+                        }
+                        timeout = (MAX_LATENCY - TIMEDIFF(now, trigger)) \
+                                  / MAX_LATENCY * MIN_LATENCY;
+                        if (timeout > 0)
+                                continue;
+
+                        printf("%f\n", timeout);
                 }
 
+                drawing = 0;
                 display(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
