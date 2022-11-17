@@ -600,6 +600,9 @@ int main(int, char **, char **env)
         struct timespec now, trigger;
         double timeout = -1;
 
+        display(k);
+        glfwSwapBuffers(window);
+
         while (!glfwWindowShouldClose(window)) {
                 FD_ZERO(&readable);
                 FD_SET(k->master, &readable);
