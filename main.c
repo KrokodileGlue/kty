@@ -440,7 +440,7 @@ int load_fonts(struct kty *k)
                 "NotoSansCJK-Regular.ttc",
         };
 
-        for (int i = 0; i < sizeof path / sizeof *path; i++) {
+        for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
                 FT_Face face;
 
                 if (FT_New_Face(k->ft, path[i], 0, &face)) {
@@ -474,14 +474,17 @@ struct kty *k;
 
 void character_callback(GLFWwindow *window, uint32_t c)
 {
+        (void)window;
         uint8_t buf[4];
-        unsigned len;
+        unsigned len = 0;
         utf8encode(c, buf, &len);
         write(k->master, buf, len);
 }
 
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
+        (void)window, (void)mods, (void)scancode;
+
         if (action != GLFW_PRESS) return;
 
         switch (key) {
@@ -496,6 +499,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
+        (void)window;
         tresize(k, width / k->w.cw, height / k->w.ch);
 }
 
