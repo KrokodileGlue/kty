@@ -371,6 +371,7 @@ void display(struct kty *k)
 
         for (int i = 0; i < k->row; i++) {
                 for (int j = 0; j < k->col; j++) {
+                        if (!k->line[i][j].c) continue;
                         render_glyph(k, k->line[i][j].c, j, i, sx, sy);
                 }
         }
