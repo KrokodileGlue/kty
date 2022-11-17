@@ -144,7 +144,7 @@ int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
 
 void tresize(struct kty *k, int col, int row)
 {
-        printf("tresize(%d,%d)\n", col, row);
+        printf("tresize(%d,%d -> %d,%d)\n", k->col, k->row, col, row);
 
         k->line = realloc(k->line, row * sizeof *k->line);
 
@@ -164,6 +164,9 @@ void tresize(struct kty *k, int col, int row)
 void tputc(struct kty *k, uint32_t c)
 {
         printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
+
+        if (k->c.x >= k->col) return;
+        if (k->c.y >= k->row) return;
 
         k->line[k->c.y][k->c.x] = (struct glyph){
                 .c = c,
@@ -374,7 +377,7 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
         }
 
         /* Calculate the vertex and texture coordinates */
-        float x = -1 + (k->w.cw * (1 + x0)) * sx;
+        float x = -1 + (k->w.cw * x0) * sx;
         float y = 1 - (k->w.ch * (1 + y0)) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - slot->bitmap_top * sy;
@@ -452,7 +455,7 @@ int load_fonts(struct kty *k)
                         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
                         FT_GlyphSlot slot = face->glyph;
                         //k->w.cw = slot->metrics.horiAdvance / 64.0;
-                        k->w.cw = FONT_SIZE * 0.75;
+                        k->w.cw = FONT_SIZE * 0.7;
                         k->w.ch = slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", k->w.cw, k->w.ch);
                 }
