@@ -29,6 +29,7 @@
 #define FONT_SIZE 12
 #define MAX_LATENCY 33
 #define MIN_LATENCY 8
+#define NUM_GLYPH 1000
 #define TIMEDIFF(A, B) \
         ((A.tv_sec - B.tv_sec) * 1000 + (A.tv_nsec - B.tv_nsec) / 1E6)
 
@@ -82,6 +83,15 @@ struct kty {
 
         /* FreeType */
         FT_Library ft;
+
+        struct glyph_bitmap {
+                uint32_t c;
+                char *bitmap;
+                FT_Glyph_Metrics metrics;
+                int bitmap_top;
+                int width, height;
+        } glyph[NUM_GLYPH];
+        int num_glyph;
 
         /* Fonts */
         struct font fonts[MAX_FONTS];
@@ -305,8 +315,14 @@ void main(void) {\n\
         return 0;
 }
 
-int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
+struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
 {
+        for (int i = 0; i < k->num_glyph; i++)
+                if (k->glyph[i].c == c)
+                        return k->glyph + i;
+
+        puts("here");
+
         struct font *f = NULL;
         int load_flags = FT_LOAD_COLOR;
 
@@ -319,7 +335,7 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
                 if (!glyph_index) continue;
 
                 if (f->is_color_font) {
-                        if (!face->num_fixed_sizes) return 1;
+                        if (!face->num_fixed_sizes) return NULL;
 
                         int best_match = 0;
                         int diff = abs(FONT_SIZE - face->available_sizes[0].width);
@@ -343,38 +359,44 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
                 break;
         }
 
-        if (!f) {
+        if (!f) return NULL;
+
+        FT_GlyphSlot slot = f->face->glyph;
+
+        k->glyph[k->num_glyph] = (struct glyph_bitmap){
+                .c = c,
+                .bitmap = malloc(slot->bitmap.width * slot->bitmap.rows),
+                .metrics = slot->metrics,
+                .bitmap_top = slot->bitmap_top,
+                .width = slot->bitmap.width,
+                .height = slot->bitmap.rows,
+        };
+
+        memcpy(k->glyph[k->num_glyph].bitmap,
+                f->face->glyph->bitmap.buffer,
+                slot->bitmap.width * slot->bitmap.rows);
+
+        return &k->glyph[k->num_glyph++];
+}
+
+int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
+{
+        struct glyph_bitmap *slot = get_bitmap(k, c);
+
+        if (!slot) {
                 fprintf(stderr, "No glyph found for U+%x\n", c);
                 return 1;
         }
 
-        FT_GlyphSlot slot = f->face->glyph;
-
-        if (slot->bitmap.pixel_mode == FT_PIXEL_MODE_BGRA) {
-                glUniform1i(k->uniform_is_color, 1);
-                glTexImage2D(GL_TEXTURE_2D,                         /* target */
-                        0,                                     /* GLint level */
-                        4,                            /* GLint internalformat */
-                        slot->bitmap.width,                  /* GLsizei width */
-                        slot->bitmap.rows,                  /* GLsizei height */
-                        0,                                    /* GLint border */
-                        GL_BGRA,                             /* GLenum format */
-                        GL_UNSIGNED_BYTE,                      /* GLenum type */
-                        slot->bitmap.buffer);             /* const void * dat */
-        } else {
-                glUniform1i(k->uniform_is_color, 0);
-                glTexImage2D(GL_TEXTURE_2D,                         /* target */
-                        0,                                     /* GLint level */
-                        GL_ALPHA,                     /* GLint internalformat */
-                        slot->bitmap.width,                  /* GLsizei width */
-                        slot->bitmap.rows,                  /* GLsizei height */
-                        0,                                    /* GLint border */
-                        GL_ALPHA,                            /* GLenum format */
-                        GL_UNSIGNED_BYTE,                      /* GLenum type */
-                        slot->bitmap.buffer);             /* const void * dat */
-
-                glGenerateMipmap(GL_TEXTURE_2D);
-        }
+        glTexImage2D(GL_TEXTURE_2D,                         /* target */
+                0,                                     /* GLint level */
+                GL_ALPHA,                     /* GLint internalformat */
+                slot->width,                         /* GLsizei width */
+                slot->height,                       /* GLsizei height */
+                0,                                    /* GLint border */
+                GL_ALPHA,                            /* GLenum format */
+                GL_UNSIGNED_BYTE,                      /* GLenum type */
+                slot->bitmap);                    /* const void * dat */
 
         FT_Glyph_Metrics metrics = slot->metrics;
 
@@ -640,7 +662,7 @@ int main(int, char **, char **env)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         glEnableVertexAttribArray(k->attribute_coord);
