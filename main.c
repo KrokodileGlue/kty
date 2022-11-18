@@ -406,7 +406,7 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
 
         /* Calculate the vertex and texture coordinates */
         float x = -1 + (k->w.cw * x0) * sx;
-        float y = 1 - (k->w.ch * y0) * sy;
+        float y = 1 - (k->w.ch * (1 + y0)) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - slot->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
