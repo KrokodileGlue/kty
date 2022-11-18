@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
 
 #include <unistd.h>
@@ -97,7 +98,7 @@ struct kty {
         struct cursor c;
         struct glyph **line;
 
-        int shell_done; /* bazinga */
+        bool shell_done; /* bazinga */
 };
 
 #define UTF8CONT(X) (((uint8_t)(X) & 0xc0) == 0x80)
@@ -605,7 +606,7 @@ void *read_shell(void *arg)
                 }
         }
 
-        k->shell_done = 1;
+        k->shell_done = true;
 
         return NULL;
 }
