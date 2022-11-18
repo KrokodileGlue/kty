@@ -61,6 +61,7 @@ struct cursor {
 };
 
 struct window {
+        int width, height;
         int cw, ch;
 };
 
@@ -176,7 +177,7 @@ void tputc(struct kty *k, uint32_t c)
 {
         printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
 
-        if (k->c.x >= k->col) k->c.x = 0;
+        if (k->c.x >= k->col) k->c.x = k->col - 1;
         if (k->c.y >= k->row) {
                 int diff = k->c.y - k->row + 1;
                 for (int i = diff; i < k->row; i++) {
@@ -400,8 +401,8 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
 
         FT_Glyph_Metrics metrics = slot->metrics;
 
-        float sx = 2.0 / WINDOW_WIDTH;
-        float sy = 2.0 / WINDOW_HEIGHT;
+        float sx = 2.0 / k->w.width;
+        float sy = 2.0 / k->w.height;
 
         /* Calculate the vertex and texture coordinates */
         float x = -1 + (k->w.cw * x0) * sx;
@@ -524,7 +525,9 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
         (void)window;
+        k->w.width = width, k->w.height = height;
         tresize(k, width / k->w.cw, height / k->w.ch);
+        glViewport(0, 0, width, height);
 }
 
 int main(int, char **, char **env)
@@ -649,7 +652,7 @@ int main(int, char **, char **env)
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 1, 1 });
+        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
 
         GLuint tex;
         glActiveTexture(GL_TEXTURE0);
