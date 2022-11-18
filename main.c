@@ -4,9 +4,10 @@
 #include <time.h>
 
 #include <unistd.h>
+#include <pthread.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/select.h>
+#include <signal.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -14,13 +15,7 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 
-#include <X11/Xlibint.h>
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
-
-#define GLFW_EXPOSE_NATIVE_X11
 #include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
 
 /* No one will ever need more than 16 fonts. */
 #define MAX_FONTS 16
@@ -67,8 +62,6 @@ struct window {
 
 /* Global kty state. */
 struct kty {
-        Display *x11_display;
-
         /* PTY */
         int master;
 
@@ -103,6 +96,8 @@ struct kty {
         int col, row;
         struct cursor c;
         struct glyph **line;
+
+        int shell_done; /* bazinga */
 };
 
 #define UTF8CONT(X) (((uint8_t)(X) & 0xc0) == 0x80)
@@ -313,6 +308,31 @@ void main(void) {\n\
         /* Get a free VBO number. */
         glGenBuffers(1, &k->vbo);
 
+        glUseProgram(k->program);
+
+        /* Enabling blending allows us to use alpha textures. */
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
+
+        GLuint tex;
+        glActiveTexture(GL_TEXTURE0);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glUniform1i(k->uniform_tex, 0);
+
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glEnableVertexAttribArray(k->attribute_coord);
+        glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
+        glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
+
         return 0;
 }
 
@@ -321,8 +341,6 @@ struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
         for (int i = 0; i < k->num_glyph; i++)
                 if (k->glyph[i].c == c)
                         return k->glyph + i;
-
-        puts("here");
 
         struct font *f = NULL;
         int load_flags = FT_LOAD_COLOR;
@@ -530,6 +548,68 @@ void window_size_callback(GLFWwindow *window, int width, int height)
         glViewport(0, 0, width, height);
 }
 
+void *read_shell(void *arg)
+{
+        (void)arg;
+
+        while (1) {
+                char c;
+                if (read(k->master, &c, 1) < 0) break;
+
+                switch (c) {
+                        case ESC:
+                                read(k->master, &c, 1);
+
+                                switch (c) {
+                                        case '[':
+                                                read(k->master, &c, 1);
+
+                                                switch (c) {
+                                                        case 'K':
+                                                                for (int i = k->c.x; i < k->row; i++)
+                                                                        k->line[k->c.y][i].c = 0;
+                                                                break;
+                                                }
+                                                break;
+                                }
+                                break;
+                        case '\n':
+                                k->c.x = 0;
+                                k->c.y++;
+                                break;
+                        case 7:
+                                /* bell */
+                                break;
+                        case 8:
+                                k->c.x--;
+                                break;
+                        default: {
+                                         static uint8_t buf[4];
+                                         static int n = 0;
+
+                                         if (UTF8CONT(c)) {
+                                                 buf[n++ + 1] = c;
+                                                 k->c.x--;
+                                                 tputc(k, utf8decode(buf, n + 1));
+                                                 k->c.x++;
+                                         } else {
+                                                 if (n) {
+                                                         n = 0;
+                                                 }
+
+                                                 tputc(k, c & 0xff);
+                                                 k->c.x++;
+                                                 buf[0] = c & 0xff;
+                                         }
+                                 }
+                }
+        }
+
+        k->shell_done = 1;
+
+        return NULL;
+}
+
 int main(int, char **, char **env)
 {
         /* Set up the PTY. */
@@ -595,8 +675,6 @@ int main(int, char **, char **env)
 
         if (!glfwInit()) return 1;
 
-        //glfwWindowHint(GLFW_DOUBLEBUFFER, GLFW_FALSE);
-
         GLFWwindow *window = glfwCreateWindow(
                 WINDOW_WIDTH,
                 WINDOW_HEIGHT,
@@ -615,8 +693,6 @@ int main(int, char **, char **env)
         glfwSetCharCallback(window, character_callback);
         glfwSetKeyCallback(window, key_callback);
         glfwSetWindowSizeCallback(window, window_size_callback);
-
-        k->x11_display = glfwGetX11Display();
 
         /* Initialize FreeType. */
         if (FT_Init_FreeType(&k->ft)) {
@@ -647,126 +723,17 @@ int main(int, char **, char **env)
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
 
-        glUseProgram(k->program);
-
-        /* Enabling blending allows us to use alpha textures. */
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
-
-        GLuint tex;
-        glActiveTexture(GL_TEXTURE0);
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1i(k->uniform_tex, 0);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glEnableVertexAttribArray(k->attribute_coord);
-        glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
-        glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
-
-        fd_set readable;
-        int maxfd = k->master > k->x11_display->fd ? k->master : k->x11_display->fd;
-
-        int drawing = 0;
-        struct timespec now, trigger;
-        double timeout = -1;
+        pthread_t shell_reader;
+        pthread_create(&shell_reader, NULL, read_shell, &(int){0});
 
         display(k);
         glfwSwapBuffers(window);
 
-        while (!glfwWindowShouldClose(window)) {
-                FD_ZERO(&readable);
-                FD_SET(k->master, &readable);
-                FD_SET(k->x11_display->fd, &readable);
-
-                if (select(maxfd + 1, &readable, NULL, NULL, NULL) == -1) {
-                        perror("select");
-                        return 1;
-                }
-
-                clock_gettime(CLOCK_MONOTONIC, &now);
-
-                if (FD_ISSET(k->master, &readable))
-                {
-                        char c;
-                        read(k->master, &c, 1);
-
-                        switch (c) {
-                                case ESC:
-                                        read(k->master, &c, 1);
-
-                                        switch (c) {
-                                                case '[':
-                                                        read(k->master, &c, 1);
-
-                                                        switch (c) {
-                                                                case 'K':
-                                                                        for (int i = k->c.x; i < k->row; i++)
-                                                                                k->line[k->c.y][i].c = 0;
-                                                                        break;
-                                                        }
-                                                        break;
-                                        }
-                                        break;
-                        case '\n':
-                                k->c.x = 0;
-                                k->c.y++;
-                                break;
-                        case 7:
-                                /* bell */
-                                break;
-                        case 8:
-                                k->c.x--;
-                                break;
-                        default: {
-                                static uint8_t buf[4];
-                                static int n = 0;
-
-                                if (UTF8CONT(c)) {
-                                        buf[n++ + 1] = c;
-                                        k->c.x--;
-                                        tputc(k, utf8decode(buf, n + 1));
-                                        k->c.x++;
-                                } else {
-                                        if (n) {
-                                                n = 0;
-                                        }
-
-                                        tputc(k, c & 0xff);
-                                        k->c.x++;
-                                        buf[0] = c & 0xff;
-                                }
-                        }
-                        }
-
-                        if (!drawing) {
-                                trigger = now;
-                                drawing = 1;
-                        }
-                        timeout = (MAX_LATENCY - TIMEDIFF(now, trigger)) \
-                                  / MAX_LATENCY * MIN_LATENCY;
-                        if (timeout > 0)
-                                continue;
-
-                        printf("%f\n", timeout);
-                }
-
-                drawing = 0;
+        while (!glfwWindowShouldClose(window) && !k->shell_done) {
                 display(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
-
-        glDisableVertexAttribArray(k->attribute_coord);
-        glDeleteTextures(1, &tex);
 
         free_resources(k);
         glfwTerminate();
