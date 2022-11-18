@@ -167,7 +167,15 @@ void tputc(struct kty *k, uint32_t c)
         printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
 
         if (k->c.x >= k->col) k->c.x = 0;
-        if (k->c.y >= k->row) k->c.y = 0;
+        if (k->c.y >= k->row) {
+                int diff = k->c.y - k->row + 1;
+                for (int i = diff; i < k->row; i++) {
+                        k->line[i - diff] = k->line[i];
+                }
+                for (int i = k->row - diff; i < k->row; i++)
+                        k->line[i] = calloc(k->col, sizeof *k->line[i]);
+                k->c.y -= diff;
+        }
 
         k->line[k->c.y][k->c.x] = (struct glyph){
                 .c = c,
@@ -375,7 +383,7 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
 
         /* Calculate the vertex and texture coordinates */
         float x = -1 + (k->w.cw * x0) * sx;
-        float y = 1 - (k->w.ch * (1 + y0)) * sy;
+        float y = 1 - (k->w.ch * y0) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - slot->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
