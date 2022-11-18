@@ -29,8 +29,8 @@
 #define FONT_SIZE 12
 #define MAX_LATENCY 33
 #define MIN_LATENCY 8
-#define TIMEDIFF(t1, t2)	((t1.tv_sec-t2.tv_sec)*1000 + \
-        (t1.tv_nsec-t2.tv_nsec)/1E6)
+#define TIMEDIFF(A, B) \
+        ((A.tv_sec - B.tv_sec) * 1000 + (A.tv_nsec - B.tv_nsec) / 1E6)
 
 enum {
         ESC = 0x1B,
