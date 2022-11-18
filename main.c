@@ -148,13 +148,14 @@ void tresize(struct kty *k, int col, int row)
 
         k->line = realloc(k->line, row * sizeof *k->line);
 
-        for (int i = 0; i < row - k->row; i++) {
-                k->line[i] = calloc(k->col * sizeof *k->line[i], 1);
+        for (int i = k->row; i < row; i++) {
+                k->line[i] = calloc(k->col, sizeof *k->line[i]);
         }
 
         for (int i = 0; i < row; i++) {
                 k->line[i] = realloc(k->line[i], col * sizeof *k->line[i]);
-                memset(k->line[i] + k->col, 0, col - k->col);
+                if (col > k->col)
+                        memset(&k->line[i][k->col], 0, (col - k->col) * sizeof **k->line);
         }
 
         k->col = col;
@@ -165,8 +166,8 @@ void tputc(struct kty *k, uint32_t c)
 {
         printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
 
-        if (k->c.x >= k->col) return;
-        if (k->c.y >= k->row) return;
+        if (k->c.x >= k->col) k->c.x = 0;
+        if (k->c.y >= k->row) k->c.y = 0;
 
         k->line[k->c.y][k->c.x] = (struct glyph){
                 .c = c,
@@ -296,7 +297,7 @@ void main(void) {\n\
         return 0;
 }
 
-int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
+int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
 {
         struct font *f = NULL;
         int load_flags = FT_LOAD_COLOR;
@@ -369,12 +370,8 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0, float sx, float sy)
 
         FT_Glyph_Metrics metrics = slot->metrics;
 
-        float tmp = metrics.width * 1.0/64.0;
-        if (tmp > FONT_SIZE * 2) {
-                float s = (FONT_SIZE * 2.0) / tmp;
-                sx *= s;
-                sy *= s;
-        }
+        float sx = 2.0 / WINDOW_WIDTH;
+        float sy = 2.0 / WINDOW_HEIGHT;
 
         /* Calculate the vertex and texture coordinates */
         float x = -1 + (k->w.cw * x0) * sx;
@@ -415,16 +412,12 @@ void display(struct kty *k)
         glClearColor(0.1, 0.1, 0.1, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        float sx = 2.0 / WINDOW_WIDTH;
-        float sy = 2.0 / WINDOW_HEIGHT;
-
         for (int i = 0; i < k->row; i++) {
                 for (int j = 0; j < k->col; j++) {
                         if (!k->line[i][j].c) continue;
-                        render_glyph(k, k->line[i][j].c, j, i, sx, sy);
+                        render_glyph(k, k->line[i][j].c, j, i);
                 }
         }
-
 }
 
 void free_resources(struct kty *k)
@@ -454,8 +447,7 @@ int load_fonts(struct kty *k)
                         FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
                         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
                         FT_GlyphSlot slot = face->glyph;
-                        //k->w.cw = slot->metrics.horiAdvance / 64.0;
-                        k->w.cw = FONT_SIZE * 0.7;
+                        k->w.cw = slot->metrics.horiAdvance / 64.0;
                         k->w.ch = slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", k->w.cw, k->w.ch);
                 }
