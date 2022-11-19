@@ -61,21 +61,7 @@ struct window {
         int cw, ch;
 };
 
-/* Global kty state. */
-struct kty {
-        /* PTY */
-        int master;
-
-        /* OpenGL */
-        GLuint program;
-
-        GLint attribute_coord;
-        GLint uniform_tex;
-        GLint uniform_color;
-        GLint uniform_is_color;
-
-        GLuint vbo;
-
+struct font_renderer {
         /* FreeType */
         FT_Library ft;
 
@@ -91,6 +77,24 @@ struct kty {
         /* Fonts */
         struct font fonts[MAX_FONTS];
         int num_fonts;
+
+};
+
+struct frame {
+        struct font_renderer font;
+
+        /* PTY */
+        int master;
+
+        /* OpenGL */
+        GLuint program;
+
+        GLint attribute_coord;
+        GLint uniform_tex;
+        GLint uniform_color;
+        GLint uniform_is_color;
+
+        GLuint vbo;
 
         /* State */
         struct window w;
@@ -149,42 +153,42 @@ int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
 	return 0;
 }
 
-void tresize(struct kty *k, int col, int row)
+void tresize(struct frame *f, int col, int row)
 {
-        printf("tresize(%d,%d -> %d,%d)\n", k->col, k->row, col, row);
+        printf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
 
-        k->line = realloc(k->line, row * sizeof *k->line);
+        f->line = realloc(f->line, row * sizeof *f->line);
 
-        for (int i = k->row; i < row; i++) {
-                k->line[i] = calloc(k->col, sizeof *k->line[i]);
+        for (int i = f->row; i < row; i++) {
+                f->line[i] = calloc(f->col, sizeof *f->line[i]);
         }
 
         for (int i = 0; i < row; i++) {
-                k->line[i] = realloc(k->line[i], col * sizeof *k->line[i]);
-                if (col > k->col)
-                        memset(&k->line[i][k->col], 0, (col - k->col) * sizeof **k->line);
+                f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
+                if (col > f->col)
+                        memset(&f->line[i][f->col], 0, (col - f->col) * sizeof **f->line);
         }
 
-        k->col = col;
-        k->row = row;
+        f->col = col;
+        f->row = row;
 }
 
-void tputc(struct kty *k, uint32_t c)
+void tputc(struct frame *f, uint32_t c)
 {
-        printf("tputc(U+%x) (%d,%d)\n", c, k->c.x, k->c.y);
+        printf("tputc(U+%x) (%d,%d)\n", c, f->c.x, f->c.y);
 
-        if (k->c.x >= k->col) k->c.x = k->col - 1;
-        if (k->c.y >= k->row) {
-                int diff = k->c.y - k->row + 1;
-                for (int i = diff; i < k->row; i++) {
-                        k->line[i - diff] = k->line[i];
+        if (f->c.x >= f->col) f->c.x = f->col - 1;
+        if (f->c.y >= f->row) {
+                int diff = f->c.y - f->row + 1;
+                for (int i = diff; i < f->row; i++) {
+                        f->line[i - diff] = f->line[i];
                 }
-                for (int i = k->row - diff; i < k->row; i++)
-                        k->line[i] = calloc(k->col, sizeof *k->line[i]);
-                k->c.y -= diff;
+                for (int i = f->row - diff; i < f->row; i++)
+                        f->line[i] = calloc(f->col, sizeof *f->line[i]);
+                f->c.y -= diff;
         }
 
-        k->line[k->c.y][k->c.x] = (struct glyph){
+        f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = GLYPH_NONE,
         };
@@ -258,7 +262,7 @@ int bind_attribute_to_program(GLuint program, const char *name)
         return coord;
 }
 
-int init_gl_resources(struct kty *k)
+int init_gl_resources(struct frame *f)
 {
         const char vs[] = "#version 120\n\
 attribute vec4 coord;\n\
@@ -286,41 +290,41 @@ void main(void) {\n\
         if (!gvs || !gfs) return 1;
 
         /* Create the program and link the shaders. */
-        k->program = glCreateProgram();
-        glAttachShader(k->program, gvs);
-        glAttachShader(k->program, gfs);
-        glLinkProgram(k->program);
+        f->program = glCreateProgram();
+        glAttachShader(f->program, gvs);
+        glAttachShader(f->program, gfs);
+        glLinkProgram(f->program);
 
         /* Now check that everything compiled and linked okay. */
         GLint link_ok = GL_FALSE;
-        glGetProgramiv(k->program, GL_LINK_STATUS, &link_ok);
+        glGetProgramiv(f->program, GL_LINK_STATUS, &link_ok);
 
         if (!link_ok) {
                 fprintf(stderr, "glLinkProgram:");
-                print_gl_error_log(k->program);
+                print_gl_error_log(f->program);
                 return 1;
         }
 
-        k->attribute_coord = bind_attribute_to_program(k->program, "coord");
-        k->uniform_tex = bind_uniform_to_program(k->program, "tex");
-        k->uniform_color = bind_uniform_to_program(k->program, "color");
-        k->uniform_is_color = bind_uniform_to_program(k->program, "is_color");
+        f->attribute_coord = bind_attribute_to_program(f->program, "coord");
+        f->uniform_tex = bind_uniform_to_program(f->program, "tex");
+        f->uniform_color = bind_uniform_to_program(f->program, "color");
+        f->uniform_is_color = bind_uniform_to_program(f->program, "is_color");
 
         /* Get a free VBO number. */
-        glGenBuffers(1, &k->vbo);
+        glGenBuffers(1, &f->vbo);
 
-        glUseProgram(k->program);
+        glUseProgram(f->program);
 
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(k->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
+        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
 
         GLuint tex;
         glActiveTexture(GL_TEXTURE0);
         glGenTextures(1, &tex);
         glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1i(k->uniform_tex, 0);
+        glUniform1i(f->uniform_tex, 0);
 
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -330,31 +334,31 @@ void main(void) {\n\
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-        glEnableVertexAttribArray(k->attribute_coord);
-        glBindBuffer(GL_ARRAY_BUFFER, k->vbo);
-        glVertexAttribPointer(k->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(f->attribute_coord);
+        glBindBuffer(GL_ARRAY_BUFFER, f->vbo);
+        glVertexAttribPointer(f->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
         return 0;
 }
 
-struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
+struct glyph_bitmap *get_bitmap(struct frame *f, uint32_t c)
 {
-        for (int i = 0; i < k->num_glyph; i++)
-                if (k->glyph[i].c == c)
-                        return k->glyph + i;
+        for (int i = 0; i < f->font.num_glyph; i++)
+                if (f->font.glyph[i].c == c)
+                        return f->font.glyph + i;
 
-        struct font *f = NULL;
+        struct font *font = NULL;
         int load_flags = FT_LOAD_COLOR;
 
-        for (int i = 0; i < k->num_fonts; i++) {
-                f = k->fonts + i;
-                FT_Face face = f->face;
+        for (int i = 0; i < f->font.num_fonts; i++) {
+                font = f->font.fonts + i;
+                FT_Face face = font->face;
                 FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
                 uint32_t glyph_index = FT_Get_Char_Index(face, c);
                 if (!glyph_index) continue;
 
-                if (f->is_color_font) {
+                if (font->is_color_font) {
                         if (!face->num_fixed_sizes) return NULL;
 
                         int best_match = 0;
@@ -371,7 +375,7 @@ struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
                         FT_Select_Size(face, best_match);
 
                         if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
-                        if (FT_Render_Glyph(face->glyph, f->render_mode)) continue;
+                        if (FT_Render_Glyph(face->glyph, font->render_mode)) continue;
                 } else {
                         if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
                 }
@@ -379,11 +383,11 @@ struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
                 break;
         }
 
-        if (!f) return NULL;
+        if (!font) return NULL;
 
-        FT_GlyphSlot slot = f->face->glyph;
+        FT_GlyphSlot slot = font->face->glyph;
 
-        k->glyph[k->num_glyph] = (struct glyph_bitmap){
+        f->font.glyph[f->font.num_glyph] = (struct glyph_bitmap){
                 .c = c,
                 .bitmap = malloc(slot->bitmap.width * slot->bitmap.rows),
                 .metrics = slot->metrics,
@@ -392,16 +396,16 @@ struct glyph_bitmap *get_bitmap(struct kty *k, uint32_t c)
                 .height = slot->bitmap.rows,
         };
 
-        memcpy(k->glyph[k->num_glyph].bitmap,
-                f->face->glyph->bitmap.buffer,
+        memcpy(f->font.glyph[f->font.num_glyph].bitmap,
+                font->face->glyph->bitmap.buffer,
                 slot->bitmap.width * slot->bitmap.rows);
 
-        return &k->glyph[k->num_glyph++];
+        return &f->font.glyph[f->font.num_glyph++];
 }
 
-int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
+int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
 {
-        struct glyph_bitmap *slot = get_bitmap(k, c);
+        struct glyph_bitmap *slot = get_bitmap(f, c);
 
         if (!slot) {
                 fprintf(stderr, "No glyph found for U+%x\n", c);
@@ -420,12 +424,12 @@ int render_glyph(struct kty *k, uint32_t c, int x0, int y0)
 
         FT_Glyph_Metrics metrics = slot->metrics;
 
-        float sx = 2.0 / k->w.width;
-        float sy = 2.0 / k->w.height;
+        float sx = 2.0 / f->w.width;
+        float sy = 2.0 / f->w.height;
 
         /* Calculate the vertex and texture coordinates */
-        float x = -1 + (k->w.cw * x0) * sx;
-        float y = 1 - (k->w.ch * (1 + y0)) * sy;
+        float x = -1 + (f->w.cw * x0) * sx;
+        float y = 1 - (f->w.ch * (1 + y0)) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - slot->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
@@ -457,25 +461,25 @@ int is_color_font(FT_Face face)
         return !!length;
 }
 
-void display(struct kty *k)
+void display(struct frame *f)
 {
         glClearColor(0.1, 0.1, 0.1, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        for (int i = 0; i < k->row; i++) {
-                for (int j = 0; j < k->col; j++) {
-                        if (!k->line[i][j].c) continue;
-                        render_glyph(k, k->line[i][j].c, j, i);
+        for (int i = 0; i < f->row; i++) {
+                for (int j = 0; j < f->col; j++) {
+                        if (!f->line[i][j].c) continue;
+                        render_glyph(f, f->line[i][j].c, j, i);
                 }
         }
 }
 
-void free_resources(struct kty *k)
+void free_resources(struct frame *f)
 {
-        glDeleteProgram(k->program);
+        glDeleteProgram(f->program);
 }
 
-int load_fonts(struct kty *k)
+int load_fonts(struct frame *f)
 {
         /* TODO: Get fonts from command line options. */
 
@@ -488,7 +492,7 @@ int load_fonts(struct kty *k)
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
                 FT_Face face;
 
-                if (FT_New_Face(k->ft, path[i], 0, &face)) {
+                if (FT_New_Face(f->font.ft, path[i], 0, &face)) {
                         fprintf(stderr, "Could not open font ‘%s’\n", path[i]);
                         return 1;
                 }
@@ -497,12 +501,12 @@ int load_fonts(struct kty *k)
                         FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
                         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
                         FT_GlyphSlot slot = face->glyph;
-                        k->w.cw = slot->metrics.horiAdvance / 64.0;
-                        k->w.ch = slot->metrics.vertAdvance / 64.0;
-                        printf("%d,%d\n", k->w.cw, k->w.ch);
+                        f->w.cw = slot->metrics.horiAdvance / 64.0;
+                        f->w.ch = slot->metrics.vertAdvance / 64.0;
+                        printf("%d,%d\n", f->w.cw, f->w.ch);
                 }
 
-                k->fonts[k->num_fonts++] = (struct font){
+                f->font.fonts[f->font.num_fonts++] = (struct font){
                         .path = path[i],
                         .face = face,
                         .is_color_font = is_color_font(face),
@@ -514,7 +518,7 @@ int load_fonts(struct kty *k)
         return 0;
 }
 
-struct kty *k;
+struct frame *k;
 
 void character_callback(GLFWwindow *window, uint32_t c)
 {
@@ -696,7 +700,7 @@ int main(int, char **, char **env)
         glfwSetWindowSizeCallback(window, window_size_callback);
 
         /* Initialize FreeType. */
-        if (FT_Init_FreeType(&k->ft)) {
+        if (FT_Init_FreeType(&k->font.ft)) {
                 fprintf(stderr, "Could not init FreeType\n");
                 return 1;
         }
