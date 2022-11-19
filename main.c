@@ -376,9 +376,10 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
 
         int sh = 2048 / ch;
         int sw = 2048 / cw;
-        int x = (font->num_glyphs_in_vbo % sw) * cw;
-        int y = (font->num_glyphs_in_vbo / sw) * ch;
+        int x = (font->num_glyph % sw) * cw;
+        int y = (font->num_glyph / sw) * ch;
 
+        printf("-> %d,%d\n", x, y);
         printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
 
         /* Write the sprite into the spritemap. */
@@ -411,6 +412,7 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         printf("[%f, %f]\n", fx1, fy1);
 
         font->spritemap_dirty = 1;
+        font->num_glyph++;
 
         return &f->font.glyph[f->font.num_glyph++];
 }
