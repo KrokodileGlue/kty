@@ -368,9 +368,21 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
 
         if (!font) return NULL;
 
-        printf("Adding sprite U+%x (%c) to font %s\n", c, c, font->path);
-
         FT_GlyphSlot slot = font->face->glyph;
+        //printf("Adding sprite U+%x (%c) to font %s (%p)\n", c, c, font->path, slot->bitmap.buffer);
+        if (!slot->bitmap.buffer) {
+                puts("here");
+                f->font.glyph[f->font.num_glyph] = (struct sprite){
+                        .c = c,
+                        .metrics = slot->metrics,
+                        .bitmap_top = slot->bitmap_top,
+                        .tex_coords = { 0, 0, 0.5, 1 },
+                        .font = font,
+                };
+                font->num_glyph++;
+
+                return &f->font.glyph[f->font.num_glyph++];
+        }
 
         int cw = 10, ch = 10;
 
@@ -454,11 +466,6 @@ int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
                 { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[3] },
         };
 
-//        puts("===");
-//        for (int i = 0; i < 6; i++) {
-//                printf("%f, %f\n", box[i].x, box[i].y);
-//        }
-
         struct font *font = sprite->font;
 
         memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
@@ -475,6 +482,7 @@ void render(struct frame *f)
         for (int i = 0; i < f->row; i++) {
                 for (int j = 0; j < f->col; j++) {
                         if (!f->line[i][j].c) continue;
+                        //printf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
                         render_glyph(f, f->line[i][j].c, j, i);
                 }
         }
@@ -687,8 +695,13 @@ void *read_shell(void *arg)
                                 }
                                 break;
                         case '\n':
-                                k->c.x = 0;
                                 k->c.y++;
+                                break;
+                        case '\r':
+                                k->c.x = 0;
+                                break;
+                        case '\t':
+                                k->c.x += 8;
                                 break;
                         case 7:
                                 /* bell */
@@ -697,24 +710,24 @@ void *read_shell(void *arg)
                                 k->c.x--;
                                 break;
                         default: {
-                                         static uint8_t buf[4];
-                                         static int n = 0;
+                                 static uint8_t buf[4];
+                                 static int n = 0;
 
-                                         if (UTF8CONT(c)) {
-                                                 buf[n++ + 1] = c;
-                                                 k->c.x--;
-                                                 tputc(k, utf8decode(buf, n + 1));
-                                                 k->c.x++;
-                                         } else {
-                                                 if (n) {
-                                                         n = 0;
-                                                 }
-
-                                                 tputc(k, c & 0xff);
-                                                 k->c.x++;
-                                                 buf[0] = c & 0xff;
+                                 if (UTF8CONT(c)) {
+                                         buf[n++ + 1] = c;
+                                         k->c.x--;
+                                         tputc(k, utf8decode(buf, n + 1));
+                                         k->c.x++;
+                                 } else {
+                                         if (n) {
+                                                 n = 0;
                                          }
+
+                                         tputc(k, c & 0xff);
+                                         k->c.x++;
+                                         buf[0] = c & 0xff;
                                  }
+                         }
                 }
         }
 
