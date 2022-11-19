@@ -23,7 +23,7 @@
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
-#define NUM_GLYPH 1000
+#define NUM_GLYPH 2000
 
 enum {
         ESC = 0x1B,
@@ -181,7 +181,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tputc(struct frame *f, uint32_t c)
 {
-        printf("tputc(U+%x) (%d,%d)\n", c, f->c.x, f->c.y);
+        //printf("tputc(U+%x) (%d,%d)\n", c, f->c.x, f->c.y);
 
         if (f->c.x >= f->col) f->c.x = f->col - 1;
         if (f->c.y >= f->row) {
@@ -291,7 +291,7 @@ uniform vec4 color;\n\
 uniform bool is_color;\n\
 void main(void) {\n\
         //gl_FragColor = texture2D(tex, texpos).a * color + vec4(0.25, 0.25, 0, 1);\n\
-        gl_FragColor = vec4(1, 1, 1, texture2D(tex, texpos).a) * color + vec4(0.25, 0.25, 0.25, 0.1);\n\
+        gl_FragColor = vec4(1, 1, 1, texture2D(tex, texpos).a) * color;\n\
 }";
 
         /* Compile each shader. */
@@ -372,31 +372,36 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
 
         FT_GlyphSlot slot = font->face->glyph;
 
-        int sh = 2048 / f->w.ch;
-        int sw = 2048 / f->w.cw;
-        int x = (font->num_glyphs_in_vbo % sw) * f->w.cw;
-        int y = (font->num_glyphs_in_vbo / sw) * f->w.ch;
+        int cw = 10, ch = 10;
 
-        printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, f->w.ch, f->w.cw);
+        int sh = 2048 / ch;
+        int sw = 2048 / cw;
+        int x = (font->num_glyphs_in_vbo % sw) * cw;
+        int y = (font->num_glyphs_in_vbo / sw) * ch;
+
+        printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
 
         /* Write the sprite into the spritemap. */
         for (unsigned i = 0; i < slot->bitmap.rows; i++) {
-                if (!slot->bitmap.buffer) break;
-                memcpy(font->sprite_buffer + (y + i) * sw + x,
+                if (!slot->bitmap.buffer) {
+                        puts("here");
+                        break;
+                }
+                memcpy(font->sprite_buffer + (y + i) * 2048 + x,
                         slot->bitmap.buffer + (i * slot->bitmap.width),
                         slot->bitmap.width);
         }
 
         float fx0 = (float)x / 2048.0;
         float fx1 = (float)(x + slot->bitmap.width) / 2048.0;
-        float fy0 = 1.0 - (float)y / 2048.0;
-        float fy1 = 1.0 - (float)(y + slot->bitmap.rows) / 2048.0;
+        float fy0 = (float)y / 2048.0;
+        float fy1 = (float)(y + slot->bitmap.rows) / 2048.0;
 
         f->font.glyph[f->font.num_glyph] = (struct sprite){
                 .c = c,
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
-                .tex_coords = { fx0, fx1, fy0, fy1 },
+                .tex_coords = { fx0, fy0, fx1, fy1 },
                 .font = font,
         };
 
@@ -438,13 +443,13 @@ int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
                 GLfloat s;
                 GLfloat t;
         } box[6] = {
-                { x2    , -y2    , sprite->tex_coords[0], sprite->tex_coords[0] },
-                { x2 + w, -y2    , sprite->tex_coords[1], sprite->tex_coords[0] },
-                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[1] },
+                { x2    , -y2    , sprite->tex_coords[0], sprite->tex_coords[1] },
+                { x2 + w, -y2    , sprite->tex_coords[2], sprite->tex_coords[1] },
+                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[3] },
 
-                { x2 + w, -y2 - h, sprite->tex_coords[1], sprite->tex_coords[1] },
-                { x2 + w, -y2    , sprite->tex_coords[1], sprite->tex_coords[0] },
-                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[1] },
+                { x2 + w, -y2 - h, sprite->tex_coords[2], sprite->tex_coords[3] },
+                { x2 + w, -y2    , sprite->tex_coords[2], sprite->tex_coords[1] },
+                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[3] },
         };
 
 //        puts("===");
@@ -481,6 +486,7 @@ void render(struct frame *f)
         for (int i = 0; i < f->font.num_fonts; i++) {
                 struct font *font = f->font.fonts + i;
                 //printf("Rendering %s\n", font->path);
+
 
                 /* Enabling blending allows us to use alpha textures. */
                 glEnable(GL_BLEND);
@@ -606,7 +612,7 @@ int load_fonts(struct frame *f)
                          * TODO: Don't just hardcode this. The size obviously
                          * needs to fit inside of a single GPU texture...
                          */
-                        .vertices = calloc(2000, 4 * sizeof(GLfloat)),
+                        .vertices = calloc(NUM_GLYPH * 2, 6 * 4 * sizeof(GLfloat)),
                         .sprite_buffer = calloc(1, 2048 * 2048),
                 };
 
