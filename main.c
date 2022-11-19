@@ -36,6 +36,16 @@ struct font {
         FT_Face face;
         FT_Render_Mode render_mode;
 
+        char *sprite_buffer;
+        GLuint sprite_texture;
+        int spritemap_dirty;
+
+        char *vertices;
+        GLuint vbo;
+        int num_glyphs_in_vbo;
+
+        int num_glyph;              /* The number of glyphs in the spritemap. */
+
         int pixel_size;
         int load_flags;
 };
@@ -61,12 +71,12 @@ struct font_renderer {
         /* FreeType */
         FT_Library ft;
 
-        struct glyph_bitmap {
+        struct sprite {
                 uint32_t c;
-                char *bitmap;
+                struct font *font;
                 FT_Glyph_Metrics metrics;
                 int bitmap_top;
-                int width, height;
+                float tex_coords[4];
         } glyph[NUM_GLYPH];
         int num_glyph;
 
@@ -76,6 +86,7 @@ struct font_renderer {
 };
 
 struct frame {
+        /* This will be a pointer to a global font manager eventually. */
         struct font_renderer font;
 
         /* PTY */
@@ -259,6 +270,12 @@ int bind_attribute_to_program(GLuint program, const char *name)
 
 int init_gl_resources(struct frame *f)
 {
+        /*
+         * TODO: To support color fonts and stuff, each font must have its own
+         * shader program. For now we're only dealing with colorless fonts so
+         * we can use an alpha mask, so one shader program works for all.
+         */
+
         const char vs[] = "#version 120\n\
 attribute vec4 coord;\n\
 varying vec2 texpos;\n\
@@ -273,9 +290,8 @@ uniform sampler2D tex;\n\
 uniform vec4 color;\n\
 uniform bool is_color;\n\
 void main(void) {\n\
-        gl_FragColor = is_color\n\
-                ? texture2D(tex, texpos).rgba\n\
-                : vec4(1, 1, 1, texture2D(tex, texpos).a) * color;\n\
+        //gl_FragColor = texture2D(tex, texpos).a * color + vec4(0.25, 0.25, 0, 1);\n\
+        gl_FragColor = vec4(1, 1, 1, texture2D(tex, texpos).a) * color + vec4(0.25, 0.25, 0.25, 0.1);\n\
 }";
 
         /* Compile each shader. */
@@ -289,6 +305,7 @@ void main(void) {\n\
         glAttachShader(f->program, gvs);
         glAttachShader(f->program, gfs);
         glLinkProgram(f->program);
+        glUseProgram(f->program);
 
         /* Now check that everything compiled and linked okay. */
         GLint link_ok = GL_FALSE;
@@ -303,40 +320,11 @@ void main(void) {\n\
         f->attribute_coord = bind_attribute_to_program(f->program, "coord");
         f->uniform_tex = bind_uniform_to_program(f->program, "tex");
         f->uniform_color = bind_uniform_to_program(f->program, "color");
-        f->uniform_is_color = bind_uniform_to_program(f->program, "is_color");
-
-        /* Get a free VBO number. */
-        glGenBuffers(1, &f->vbo);
-
-        glUseProgram(f->program);
-
-        /* Enabling blending allows us to use alpha textures. */
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 0.5, 0, 1 });
-
-        GLuint tex;
-        glActiveTexture(GL_TEXTURE0);
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glUniform1i(f->uniform_tex, 0);
-
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        glEnableVertexAttribArray(f->attribute_coord);
-        glBindBuffer(GL_ARRAY_BUFFER, f->vbo);
-        glVertexAttribPointer(f->attribute_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
         return 0;
 }
 
-struct glyph_bitmap *get_bitmap(struct frame *f, uint32_t c)
+struct sprite *get_sprite(struct frame *f, uint32_t c)
 {
         for (int i = 0; i < f->font.num_glyph; i++)
                 if (f->font.glyph[i].c == c)
@@ -380,44 +368,58 @@ struct glyph_bitmap *get_bitmap(struct frame *f, uint32_t c)
 
         if (!font) return NULL;
 
+        printf("Adding sprite U+%x (%c) to font %s\n", c, c, font->path);
+
         FT_GlyphSlot slot = font->face->glyph;
 
-        f->font.glyph[f->font.num_glyph] = (struct glyph_bitmap){
+        int sh = 2048 / f->w.ch;
+        int sw = 2048 / f->w.cw;
+        int x = (font->num_glyphs_in_vbo % sw) * f->w.cw;
+        int y = (font->num_glyphs_in_vbo / sw) * f->w.ch;
+
+        printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, f->w.ch, f->w.cw);
+
+        /* Write the sprite into the spritemap. */
+        for (unsigned i = 0; i < slot->bitmap.rows; i++) {
+                if (!slot->bitmap.buffer) break;
+                memcpy(font->sprite_buffer + (y + i) * sw + x,
+                        slot->bitmap.buffer + (i * slot->bitmap.width),
+                        slot->bitmap.width);
+        }
+
+        float fx0 = (float)x / 2048.0;
+        float fx1 = (float)(x + slot->bitmap.width) / 2048.0;
+        float fy0 = 1.0 - (float)y / 2048.0;
+        float fy1 = 1.0 - (float)(y + slot->bitmap.rows) / 2048.0;
+
+        f->font.glyph[f->font.num_glyph] = (struct sprite){
                 .c = c,
-                .bitmap = malloc(slot->bitmap.width * slot->bitmap.rows),
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
-                .width = slot->bitmap.width,
-                .height = slot->bitmap.rows,
+                .tex_coords = { fx0, fx1, fy0, fy1 },
+                .font = font,
         };
 
-        memcpy(f->font.glyph[f->font.num_glyph].bitmap,
-                font->face->glyph->bitmap.buffer,
-                slot->bitmap.width * slot->bitmap.rows);
+        printf("[%f, %f]\n", fx0, fy0);
+        printf("[%f, %f]\n", fx1, fy0);
+        printf("[%f, %f]\n", fx0, fy1);
+        printf("[%f, %f]\n", fx1, fy1);
+
+        font->spritemap_dirty = 1;
 
         return &f->font.glyph[f->font.num_glyph++];
 }
 
 int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
 {
-        struct glyph_bitmap *slot = get_bitmap(f, c);
+        struct sprite *sprite = get_sprite(f, c);
 
-        if (!slot) {
+        if (!sprite) {
                 fprintf(stderr, "No glyph found for U+%x\n", c);
                 return 1;
         }
 
-        glTexImage2D(GL_TEXTURE_2D,                         /* target */
-                0,                                     /* GLint level */
-                GL_ALPHA,                     /* GLint internalformat */
-                slot->width,                         /* GLsizei width */
-                slot->height,                       /* GLsizei height */
-                0,                                    /* GLint border */
-                GL_ALPHA,                            /* GLenum format */
-                GL_UNSIGNED_BYTE,                      /* GLenum type */
-                slot->bitmap);                    /* const void * dat */
-
-        FT_Glyph_Metrics metrics = slot->metrics;
+        FT_Glyph_Metrics metrics = sprite->metrics;
 
         float sx = 2.0 / f->w.width;
         float sy = 2.0 / f->w.height;
@@ -426,7 +428,7 @@ int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
         float x = -1 + (f->w.cw * x0) * sx;
         float y = 1 - (f->w.ch * (1 + y0)) * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
-        float y2 = -y - slot->bitmap_top * sy;
+        float y2 = -y - sprite->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
 
@@ -435,17 +437,112 @@ int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
                 GLfloat y;
                 GLfloat s;
                 GLfloat t;
-        } box[4] = {
-                { x2    , -y2    , 0, 0 },
-                { x2 + w, -y2    , 1, 0 },
-                { x2    , -y2 - h, 0, 1 },
-                { x2 + w, -y2 - h, 1, 1 },
+        } box[6] = {
+                { x2    , -y2    , sprite->tex_coords[0], sprite->tex_coords[0] },
+                { x2 + w, -y2    , sprite->tex_coords[1], sprite->tex_coords[0] },
+                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[1] },
+
+                { x2 + w, -y2 - h, sprite->tex_coords[1], sprite->tex_coords[1] },
+                { x2 + w, -y2    , sprite->tex_coords[1], sprite->tex_coords[0] },
+                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[1] },
         };
 
-        glBufferData(GL_ARRAY_BUFFER, sizeof box, box, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+//        puts("===");
+//        for (int i = 0; i < 6; i++) {
+//                printf("%f, %f\n", box[i].x, box[i].y);
+//        }
+
+        struct font *font = sprite->font;
+
+        memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
+        font->num_glyphs_in_vbo++;
 
         return 0;
+}
+
+void render(struct frame *f)
+{
+        for (int i = 0; i < f->font.num_fonts; i++)
+                f->font.fonts[i].num_glyphs_in_vbo = 0;
+
+        for (int i = 0; i < f->row; i++) {
+                for (int j = 0; j < f->col; j++) {
+                        if (!f->line[i][j].c) continue;
+                        render_glyph(f, f->line[i][j].c, j, i);
+                }
+        }
+
+        /*
+         * So each glyph has been rendered into its font's spritesheet at this
+         * point.
+         */
+
+        f->font.num_fonts = 1;
+        for (int i = 0; i < f->font.num_fonts; i++) {
+                struct font *font = f->font.fonts + i;
+                //printf("Rendering %s\n", font->path);
+
+                /* Enabling blending allows us to use alpha textures. */
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 0, 1, 1 });
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
+                glUniform1i(f->uniform_tex, 0);
+
+                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                glBindBuffer(GL_ARRAY_BUFFER, font->vbo);
+                glEnableVertexAttribArray(f->attribute_coord);
+
+                /* Upload the VBO. */
+                glBufferData(GL_ARRAY_BUFFER,
+                        font->num_glyphs_in_vbo * 6 * 4 * sizeof(GLfloat),
+                        font->vertices,
+                        GL_DYNAMIC_DRAW);
+
+                glVertexAttribPointer(f->attribute_coord,
+                        4,
+                        GL_FLOAT,
+                        GL_FALSE,
+                        4 * sizeof(GLfloat),
+                        0);
+
+                if (font->spritemap_dirty) {
+                        /* Upload the sprite map. */
+                        glTexImage2D(GL_TEXTURE_2D,
+                                0,
+                                GL_ALPHA,
+                                2048,
+                                2048,
+                                0,
+                                GL_ALPHA,
+                                GL_UNSIGNED_BYTE,
+                                font->sprite_buffer);
+                        font->spritemap_dirty = 0;
+                }
+
+                glDrawArrays(GL_TRIANGLES, 0, font->num_glyphs_in_vbo * 6);
+        }
+}
+
+void display(struct frame *f)
+{
+        glClearColor(0.1, 0.1, 0.1, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        render(f);
+}
+
+void free_resources(struct frame *f)
+{
+        glDeleteProgram(f->program);
 }
 
 int is_color_font(FT_Face face)
@@ -456,31 +553,13 @@ int is_color_font(FT_Face face)
         return !!length;
 }
 
-void display(struct frame *f)
-{
-        glClearColor(0.1, 0.1, 0.1, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        for (int i = 0; i < f->row; i++) {
-                for (int j = 0; j < f->col; j++) {
-                        if (!f->line[i][j].c) continue;
-                        render_glyph(f, f->line[i][j].c, j, i);
-                }
-        }
-}
-
-void free_resources(struct frame *f)
-{
-        glDeleteProgram(f->program);
-}
-
 int load_fonts(struct frame *f)
 {
         /* TODO: Get fonts from command line options. */
 
         const char *path[] = {
                 "SourceCodePro-Regular.otf",
-                "NotoColorEmoji.ttf",
+                //"NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
         };
 
@@ -492,10 +571,26 @@ int load_fonts(struct frame *f)
                         return 1;
                 }
 
+                /*
+                 * Hacky; this assumes that the first font in the list is the
+                 * user's primary font and that the font is monospace.
+                 */
                 if (!i) {
                         FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
+
+                        /*
+                         * Whatever font is being used for an ASCII character
+                         * like `x` is prooooobably the right font to base the
+                         * grid size on.
+                         */
                         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
                         FT_GlyphSlot slot = face->glyph;
+
+                        /*
+                         * We need to keep the width and height independent of
+                         * font used to render non-ascii characters because we
+                         * have to be able to treat the terminal like a grid.
+                         */
                         f->w.cw = slot->metrics.horiAdvance / 64.0;
                         f->w.ch = slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", f->w.cw, f->w.ch);
@@ -507,7 +602,17 @@ int load_fonts(struct frame *f)
                         .is_color_font = is_color_font(face),
                         .render_mode = FT_RENDER_MODE_NORMAL,
                         .load_flags = 0,
+                        /*
+                         * TODO: Don't just hardcode this. The size obviously
+                         * needs to fit inside of a single GPU texture...
+                         */
+                        .vertices = calloc(2000, 4 * sizeof(GLfloat)),
+                        .sprite_buffer = calloc(1, 2048 * 2048),
                 };
+
+                /* Get a free VBO number. */
+                glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo);
+                glGenTextures(1, &f->font.fonts[f->font.num_fonts - 1].sprite_texture);
         }
 
         return 0;
@@ -700,9 +805,6 @@ int main(int, char **, char **env)
                 return 1;
         }
 
-        /* Load fonts. */
-        if (load_fonts(k)) return 1;
-
         /* Initialize GLEW. */
         GLenum glew_status = glewInit();
 
@@ -715,6 +817,9 @@ int main(int, char **, char **env)
                 fprintf(stderr, "No support for OpenGL 2.0 found\n");
                 return 1;
         }
+
+        /* Load fonts. */
+        if (load_fonts(k)) return 1;
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
