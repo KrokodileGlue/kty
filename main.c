@@ -23,11 +23,7 @@
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
-#define MAX_LATENCY 33
-#define MIN_LATENCY 8
 #define NUM_GLYPH 1000
-#define TIMEDIFF(A, B) \
-        ((A.tv_sec - B.tv_sec) * 1000 + (A.tv_nsec - B.tv_nsec) / 1E6)
 
 enum {
         ESC = 0x1B,
@@ -77,7 +73,6 @@ struct font_renderer {
         /* Fonts */
         struct font fonts[MAX_FONTS];
         int num_fonts;
-
 };
 
 struct frame {
