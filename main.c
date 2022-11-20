@@ -24,6 +24,10 @@
 #define FONT_SIZE 12
 #define NUM_GLYPH 2000
 
+#define ISCONTROLC0(c) ((0 < c && c < 0x1f) || (c) == 0x7f)
+#define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
+#define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
+
 enum {
         BEL = 0x07,
         BS = 0x08,
@@ -92,6 +96,11 @@ struct font_renderer {
         int num_fonts;
 };
 
+enum {
+        ESC_START = 1,
+        ESC_CSI = 1 << 1,
+};
+
 struct frame {
         /* This will be a pointer to a global font manager eventually. */
         struct font_renderer font;
@@ -116,96 +125,14 @@ struct frame {
         struct glyph **line;
 
         bool shell_done; /* bazinga */
+
+        /* Escape sequence state machine */
+        uint32_t esc_buf[100];
+        int esc_buf_len;
+
+        int mode;
+        int esc;
 };
-
-#define UTF8CONT(X) (((uint8_t)(X) & 0xc0) == 0x80)
-
-unsigned
-utf8chrlen(const uint8_t *s, unsigned l)
-{
-	unsigned i = 0;
-	while (s++ && ++i < l && UTF8CONT(*s));
-	return i;
-}
-
-uint32_t utf8decode(const uint8_t *s, unsigned l)
-{
-	uint32_t c;
-	unsigned len = utf8chrlen(s, l);
-
-	c = (*s & ((1 << (8 - len)) - 1))
-		<< (len - 1) * 6;
-	for (unsigned i = 1; i < len; i++)
-		c |= (s[i] & 0x3F) << (len - i - 1) * 6;
-
-	return c;
-}
-
-int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
-{
-	if (c <= 0x7F) {
-		*len = 1;
-		buf[0] = c & 0xFF;
-	} else if (c >= 0x80 && c <= 0x7FF) {
-		*len = 2;
-		buf[0] = 0xC0 | ((c >> 6) & 0x1F);
-		buf[1] = 0x80 | (c & 0x3F);
-	} else if (c >= 0x800 && c <= 0xFFFF) {
-		*len = 3;
-		buf[0] = 0xE0 | ((c >> 12) & 0xF);
-		buf[1] = 0x80 | ((c >> 6) & 0x3F);
-		buf[2] = 0x80 | (c & 0x3F);
-	} else if (c >= 0x10000 && c <= 0x10FFFF) {
-		*len = 4;
-		buf[0] = 0xF0 | ((c >> 18) & 0x7);
-		buf[1] = 0x80 | ((c >> 12) & 0x3F);
-		buf[2] = 0x80 | ((c >> 6) & 0x3F);
-		buf[3] = 0x80 | (c & 0x3F);
-	} else return 1;
-
-	return 0;
-}
-
-void tresize(struct frame *f, int col, int row)
-{
-        printf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
-
-        f->line = realloc(f->line, row * sizeof *f->line);
-
-        for (int i = f->row; i < row; i++) {
-                f->line[i] = calloc(f->col, sizeof *f->line[i]);
-        }
-
-        for (int i = 0; i < row; i++) {
-                f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
-                if (col > f->col)
-                        memset(&f->line[i][f->col], 0, (col - f->col) * sizeof **f->line);
-        }
-
-        f->col = col;
-        f->row = row;
-}
-
-void tputc(struct frame *f, uint32_t c)
-{
-        //printf("tputc(U+%x) (%d,%d)\n", c, f->c.x, f->c.y);
-
-        if (f->c.x >= f->col) f->c.x = f->col - 1;
-        if (f->c.y >= f->row) {
-                int diff = f->c.y - f->row + 1;
-                for (int i = diff; i < f->row; i++) {
-                        f->line[i - diff] = f->line[i];
-                }
-                for (int i = f->row - diff; i < f->row; i++)
-                        f->line[i] = calloc(f->col, sizeof *f->line[i]);
-                f->c.y -= diff;
-        }
-
-        f->line[f->c.y][f->c.x] = (struct glyph){
-                .c = c,
-                .mode = GLYPH_NONE,
-        };
-}
 
 int print_gl_error_log(GLuint object)
 {
@@ -377,8 +304,8 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
 
         FT_GlyphSlot slot = font->face->glyph;
         //printf("Adding sprite U+%x (%c) to font %s (%p)\n", c, c, font->path, slot->bitmap.buffer);
+
         if (!slot->bitmap.buffer) {
-                puts("here");
                 f->font.glyph[f->font.num_glyph] = (struct sprite){
                         .c = c,
                         .metrics = slot->metrics,
@@ -391,9 +318,7 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
                 return &f->font.glyph[f->font.num_glyph++];
         }
 
-        int cw = 10, ch = 10;
-
-        int sh = 2048 / ch;
+        int cw = 10, ch = 10; /* TODO: Fix this haha. */
         int sw = 2048 / cw;
         int x = (font->num_glyph % sw) * cw;
         int y = (font->num_glyph / sw) * ch;
@@ -402,15 +327,10 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
 
         /* Write the sprite into the spritemap. */
-        for (unsigned i = 0; i < slot->bitmap.rows; i++) {
-                if (!slot->bitmap.buffer) {
-                        puts("here");
-                        break;
-                }
+        for (unsigned i = 0; i < slot->bitmap.rows; i++)
                 memcpy(font->sprite_buffer + (y + i) * 2048 + x,
                         slot->bitmap.buffer + (i * slot->bitmap.width),
                         slot->bitmap.width);
-        }
 
         float fx0 = (float)x / 2048.0;
         float fx1 = (float)(x + slot->bitmap.width) / 2048.0;
@@ -641,7 +561,223 @@ int load_fonts(struct frame *f)
         return 0;
 }
 
+#define UTF8CONT(X) (((uint8_t)(X) & 0xc0) == 0x80)
+
+unsigned utf8chrlen(const char *s, unsigned l)
+{
+	unsigned i = 0;
+	while (s++ && ++i < l && UTF8CONT(*s));
+	return i;
+}
+
+unsigned utf8decode(const char *s, unsigned l, uint32_t *c)
+{
+	unsigned len = utf8chrlen(s, l);
+
+        *c = (*s & ((1 << (8 - len)) - 1))
+                << (len - 1) * 6;
+	for (unsigned i = 1; i < len; i++)
+		*c |= (s[i] & 0x3F) << (len - i - 1) * 6;
+
+	return len;
+}
+
+int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
+{
+	if (c <= 0x7F) {
+		*len = 1;
+		buf[0] = c & 0xFF;
+	} else if (c >= 0x80 && c <= 0x7FF) {
+		*len = 2;
+		buf[0] = 0xC0 | ((c >> 6) & 0x1F);
+		buf[1] = 0x80 | (c & 0x3F);
+	} else if (c >= 0x800 && c <= 0xFFFF) {
+		*len = 3;
+		buf[0] = 0xE0 | ((c >> 12) & 0xF);
+		buf[1] = 0x80 | ((c >> 6) & 0x3F);
+		buf[2] = 0x80 | (c & 0x3F);
+	} else if (c >= 0x10000 && c <= 0x10FFFF) {
+		*len = 4;
+		buf[0] = 0xF0 | ((c >> 18) & 0x7);
+		buf[1] = 0x80 | ((c >> 12) & 0x3F);
+		buf[2] = 0x80 | ((c >> 6) & 0x3F);
+		buf[3] = 0x80 | (c & 0x3F);
+	} else return 1;
+
+	return 0;
+}
+
+void tresize(struct frame *f, int col, int row)
+{
+        printf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
+
+        f->line = realloc(f->line, row * sizeof *f->line);
+
+        for (int i = f->row; i < row; i++) {
+                f->line[i] = calloc(f->col, sizeof *f->line[i]);
+        }
+
+        for (int i = 0; i < row; i++) {
+                f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
+                if (col > f->col)
+                        memset(&f->line[i][f->col], 0, (col - f->col) * sizeof **f->line);
+        }
+
+        f->col = col;
+        f->row = row;
+}
+
+void tprintc(struct frame *f, uint32_t c)
+{
+        f->line[f->c.y][f->c.x] = (struct glyph){
+                .c = c,
+                .mode = GLYPH_NONE,
+        };
+}
+
+void tcontrolcode(struct frame *f, uint32_t c)
+{
+        switch (c) {
+        case ESC:
+                f->esc |= ESC_START;
+                break;
+        case LF:
+        case VT:
+                f->c.y++;
+                break;
+        case CR:
+                f->c.x = 0;
+                break;
+        case HT:
+                f->c.x = (f->c.x / 8 + 1) * 8;
+                break;
+        case BEL:
+                break;
+        case BS:
+                f->c.x--;
+                tprintc(f, ' ');
+                break;
+        }
+}
+
+void eschandle(struct frame *f, uint32_t c)
+{
+        switch (c) {
+        case '[':
+                f->esc |= ESC_CSI;
+                break;
+        }
+}
+
+void tputc(struct frame *f, uint32_t c)
+{
+        printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+
+        if (f->c.x >= f->col) f->c.x = f->col - 1;
+
+        /*
+         * Scroll the entire screen when the cursor tries to write past the
+         * end.
+         */
+        if (f->c.y >= f->row) {
+                int diff = f->c.y - f->row + 1;
+                for (int i = diff; i < f->row; i++) {
+                        f->line[i - diff] = f->line[i];
+                }
+                for (int i = f->row - diff; i < f->row; i++)
+                        f->line[i] = calloc(f->col, sizeof *f->line[i]);
+                f->c.y -= diff;
+        }
+
+        /* Here's the legwork of actually interpreting commands. */
+
+        if (ISCONTROL(c)) {
+                tcontrolcode(f, c);
+        } else if (f->esc & ESC_START) {
+                if (f->esc & ESC_CSI) {
+                        f->esc_buf[f->esc_buf_len++] = c;
+                        if ((c > 0x40 && c < 0x7E)
+                                || f->esc_buf_len >= sizeof(f->esc_buf) - 1) {
+                                f->esc = 0;
+                                f->esc_buf_len = 0;
+
+                                /*
+                                 * So now we have an entire escape sequence in
+                                 * `f->esc_buf`, just parse it and execute it.
+                                 */
+                        }
+                        return;
+                } else {
+                        eschandle(f, c);
+                }
+        } else if (f->c.x + 1 < f->col) {
+                tprintc(f, c);
+                f->c.x++;
+        }
+}
+
+int twrite(struct frame *f, const char *buf, int buflen)
+{
+        int charsize, n;
+
+        for (n = 0; n < buflen; n += charsize) {
+                /* TODO: Support commands which alter support for UTF-8. */
+                uint32_t c;
+                if (!(charsize = utf8decode(buf + n, buflen - n, &c))) break;
+
+#if 0
+                if (ISCONTROL(c) && 0) {
+                        if (c & 0x80) {
+                                c &= 0x7f;
+                                tputc(f, '^');
+                                tputc(f, '[');
+                        } else if (c != '\n' && c != '\r' && c != '\t') {
+                                c ^= 0x40;
+                                tputc(f, '^');
+                        }
+                }
+#endif
+
+                tputc(f, c);
+        }
+
+        return n;
+}
+
 struct frame *k;
+
+void *read_shell(void *arg)
+{
+        (void)arg;
+        struct frame *f = k;
+
+        /* TODO: Put these into the frame. */
+        static char buf[BUFSIZ];
+        static int buflen = 0;
+        int ret, written;
+
+        while (1) {
+                ret = read(f->master, buf + buflen, sizeof buf / sizeof *buf - buflen);
+
+                switch (ret) {
+                case 0:
+                        exit(0);
+                case -1:
+                        fprintf(stderr, "Couldn't read from shell\n");
+                        exit(1);
+                default:
+                        buflen += ret;
+                        written = twrite(f, buf, buflen);
+                        buflen -= written;
+                        if (buflen > 0)
+                                memmove(buf, buf + written, buflen);
+                }
+        }
+
+        f->shell_done = true;
+
+        return NULL;
+}
 
 void character_callback(GLFWwindow *window, uint32_t c)
 {
@@ -674,78 +810,6 @@ void window_size_callback(GLFWwindow *window, int width, int height)
         k->w.width = width, k->w.height = height;
         tresize(k, width / k->w.cw, height / k->w.ch);
         glViewport(0, 0, width, height);
-}
-
-void interpret_byte_from_shell(struct frame *f, char c)
-{
-        switch (c) {
-                case ESC:
-                        read(f->master, &c, 1);
-
-                        switch (c) {
-                                case '[':
-                                        read(f->master, &c, 1);
-
-                                        switch (c) {
-                                                case 'f':
-                                                        for (int i = f->c.x; i < f->row; i++)
-                                                                f->line[f->c.y][i].c = 0;
-                                                        break;
-                                        }
-                                        break;
-                        }
-                        break;
-                case LF:
-                case VT:
-                        f->c.y++;
-                        break;
-                case CR:
-                        f->c.x = 0;
-                        break;
-                case HT:
-                        f->c.x = (f->c.x / 8 + 1) * 8;
-                        break;
-                case BEL:
-                        break;
-                case BS:
-                        f->c.x--;
-                        tputc(f, ' ');
-                        break;
-                default: {
-                         static uint8_t buf[4];
-                         static int n = 0;
-
-                         if (UTF8CONT(c)) {
-                                 buf[n++ + 1] = c;
-                                 f->c.x--;
-                                 tputc(f, utf8decode(buf, n + 1));
-                                 f->c.x++;
-                         } else {
-                                 if (n) {
-                                         n = 0;
-                                 }
-
-                                 tputc(f, c & 0xff);
-                                 f->c.x++;
-                                 buf[0] = c & 0xff;
-                         }
-                 }
-        }
-}
-
-void *read_shell(void *arg)
-{
-        (void)arg;
-
-        while (1) {
-                char c;
-                if (read(k->master, &c, 1) < 0) break;
-                interpret_byte_from_shell(k, c);
-        }
-
-        k->shell_done = true;
-
-        return NULL;
 }
 
 int main(int, char **, char **env)
@@ -862,7 +926,7 @@ int main(int, char **, char **env)
         if (init_gl_resources(k)) return 1;
 
         pthread_t shell_reader;
-        pthread_create(&shell_reader, NULL, read_shell, &(int){0});
+        pthread_create(&shell_reader, NULL, read_shell, k);
 
         display(k);
         glfwSwapBuffers(window);
