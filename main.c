@@ -24,6 +24,9 @@
 #define FONT_SIZE 12
 #define NUM_GLYPH 2000
 
+/* How long could an escape sequence possibly be. */
+#define ESC_ARG_SIZE 512
+
 #define ISCONTROLC0(c) ((0 < c && c < 0x1f) || (c) == 0x7f)
 #define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
 #define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
@@ -127,8 +130,14 @@ struct frame {
         bool shell_done; /* bazinga */
 
         /* Escape sequence state machine */
-        uint32_t esc_buf[100];
-        unsigned esc_buf_len;
+        struct {
+                char buf[1024];
+                long arg[ESC_ARG_SIZE];
+                unsigned len;
+                int narg;
+                int priv;
+                int mode[2];
+        } csi;
 
         int mode;
         int esc;
@@ -660,6 +669,85 @@ void tcontrolcode(struct frame *f, uint32_t c)
         }
 }
 
+void csiparse(struct frame *f)
+{
+	char *p = f->csi.buf, *np;
+	long v;
+
+	f->csi.narg = 0;
+	if (*p == '?') {
+		f->csi.priv = 1;
+		p++;
+	}
+
+	f->csi.buf[f->csi.len] = 0;
+	while (p < f->csi.buf + f->csi.len) {
+		np = NULL;
+		v = strtol(p, &np, 10);
+		if (np == p)
+			v = 0;
+		if (v == LONG_MAX || v == LONG_MIN)
+			v = -1;
+		f->csi.arg[f->csi.narg++] = v;
+		p = np;
+		if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
+			break;
+		p++;
+	}
+
+	f->csi.mode[0] = *p++;
+	f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
+
+        puts(f->csi.buf);
+        printf("ESC '[' [[ [<priv:%d>] ", f->csi.priv);
+        for (int i = 0; i < f->csi.narg; i++)
+                printf("<arg:%ld> [;]", f->csi.arg[i]);
+        printf("] <mode:%d> [<mode:%d>]]", f->csi.mode[0], f->csi.mode[1]);
+        puts("");
+}
+
+void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
+{
+        for (int i = y0; i < y1; i++)
+                for (int j = x0; j < x1; j++)
+                        f->line[i][j] = (struct glyph){ 0 };
+}
+
+void csihandle(struct frame *f)
+{
+        switch (f->csi.mode[0]) {
+        case 'H':
+                f->c.x = f->c.y = 0;
+                break;
+        case 'J':
+                switch (f->csi.arg[0]) {
+                case 0: /* below */
+                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                        if (f->c.y < f->row-1) {
+                                tclearregion(f, 0, f->c.y + 1, f->col - 1, f->row - 1);
+                        }
+                        break;
+                case 1: /* above */
+                        if (f->c.y > 1)
+                                tclearregion(f, 0, 0, f->col - 1, f->c.y - 1);
+                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
+                        break;
+                case 2: /* all */
+                        tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        break;
+                default:
+                        fprintf(stderr, "Unknown clear argument %ld\n", f->csi.arg[0]);
+                        break;
+                }
+                break;
+        }
+}
+
+void resetcsi(struct frame *f)
+{
+        memset(&f->csi, 0, sizeof f->csi);
+}
+
 void eschandle(struct frame *f, uint32_t c)
 {
         switch (c) {
@@ -695,16 +783,18 @@ void tputc(struct frame *f, uint32_t c)
                 tcontrolcode(f, c);
         } else if (f->esc & ESC_START) {
                 if (f->esc & ESC_CSI) {
-                        f->esc_buf[f->esc_buf_len++] = c;
+                        f->csi.buf[f->csi.len++] = c;
                         if ((c > 0x40 && c < 0x7E)
-                                || f->esc_buf_len >= sizeof(f->esc_buf) - 1) {
+                                || f->csi.len >= sizeof(f->csi.buf) - 1) {
                                 f->esc = 0;
-                                f->esc_buf_len = 0;
 
                                 /*
                                  * So now we have an entire escape sequence in
                                  * `f->esc_buf`, just parse it and execute it.
                                  */
+                                csiparse(f);
+                                csihandle(f);
+                                resetcsi(f);
                         }
                         return;
                 } else {
