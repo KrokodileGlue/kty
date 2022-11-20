@@ -128,7 +128,7 @@ struct frame {
 
         /* Escape sequence state machine */
         uint32_t esc_buf[100];
-        int esc_buf_len;
+        unsigned esc_buf_len;
 
         int mode;
         int esc;
@@ -323,8 +323,8 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         int x = (font->num_glyph % sw) * cw;
         int y = (font->num_glyph / sw) * ch;
 
-        printf("-> %d,%d\n", x, y);
-        printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
+        //printf("-> %d,%d\n", x, y);
+        //printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
 
         /* Write the sprite into the spritemap. */
         for (unsigned i = 0; i < slot->bitmap.rows; i++)
@@ -345,10 +345,10 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
                 .font = font,
         };
 
-        printf("[%f, %f]\n", fx0, fy0);
-        printf("[%f, %f]\n", fx1, fy0);
-        printf("[%f, %f]\n", fx0, fy1);
-        printf("[%f, %f]\n", fx1, fy1);
+        //printf("[%f, %f]\n", fx0, fy0);
+        //printf("[%f, %f]\n", fx1, fy0);
+        //printf("[%f, %f]\n", fx0, fy1);
+        //printf("[%f, %f]\n", fx1, fy1);
 
         font->spritemap_dirty = 1;
         font->num_glyph++;
@@ -428,7 +428,7 @@ void render(struct frame *f)
                 /* Enabling blending allows us to use alpha textures. */
                 glEnable(GL_BLEND);
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 0, 1, 1 });
+                glUniform4fv(f->uniform_color, 1, (GLfloat []){ 0.75, 0.75, 0.75, 1 });
 
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
@@ -478,7 +478,7 @@ void render(struct frame *f)
 
 void display(struct frame *f)
 {
-        glClearColor(0.1, 0.1, 0.1, 1);
+        glClearColor(0.05, 0.05, 0.05, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         render(f);
 }
@@ -671,7 +671,7 @@ void eschandle(struct frame *f, uint32_t c)
 
 void tputc(struct frame *f, uint32_t c)
 {
-        printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        //printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
 
         if (f->c.x >= f->col) f->c.x = f->col - 1;
 
@@ -864,7 +864,7 @@ int main(int, char **, char **env)
                 dup2(slave, 2);
                 close(slave);
 
-                execle("/bin/sh", "/bin/sh", NULL, env);
+                execle("/bin/bash", "/bin/bash", NULL, env);
         } else {
                 close(slave);
         }
