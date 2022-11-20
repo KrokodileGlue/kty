@@ -698,11 +698,10 @@ void csiparse(struct frame *f)
 	f->csi.mode[0] = *p++;
 	f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
 
-        puts(f->csi.buf);
-        printf("ESC '[' [[ [<priv:%d>] ", f->csi.priv);
+        printf("(%.*s) -> ESC '[' [[ [<priv:%d>] ", f->csi.len, f->csi.buf, f->csi.priv);
         for (int i = 0; i < f->csi.narg; i++)
                 printf("<arg:%ld> [;]", f->csi.arg[i]);
-        printf("] <mode:%d> [<mode:%d>]]", f->csi.mode[0], f->csi.mode[1]);
+        printf("] <mode:%d:%c> [<mode:%d>]]", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
         puts("");
 }
 
@@ -716,6 +715,13 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
+        case 'h': /* TODO: Set terminal mode. */
+        case 'l': /* TODO: Reset terminal mode. */
+                fprintf(stderr, "-> unimplemented\n");
+                break;
+        case 'm': /* TODO: Implement bold/italics/underline/etc. */
+                fprintf(stderr, "-> unimplemented\n");
+                break;
         case 'H':
                 f->c.x = f->c.y = 0;
                 break;
@@ -739,6 +745,9 @@ void csihandle(struct frame *f)
                         fprintf(stderr, "Unknown clear argument %ld\n", f->csi.arg[0]);
                         break;
                 }
+                break;
+        default:
+                fprintf(stderr, "Unhandled escape sequence\n");
                 break;
         }
 }
