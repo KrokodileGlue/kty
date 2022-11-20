@@ -119,8 +119,6 @@ struct frame {
         GLint uniform_color;
         GLint uniform_is_color;
 
-        GLuint vbo;
-
         /* State */
         struct window w;
         int col, row;
