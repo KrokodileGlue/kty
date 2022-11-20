@@ -5,10 +5,9 @@
 #include <time.h>
 
 #include <unistd.h>
-#include <pthread.h>
+#include <pthread.h> /* TODO: Windows support. */
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <signal.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -26,7 +25,15 @@
 #define NUM_GLYPH 2000
 
 enum {
+        BEL = 0x07,
+        BS = 0x08,
+        HT = 0x09,
+        LF = 0x0A,
+        VT = 0x0B,
+        FF = 0x0C,
+        CR = 0x0D,
         ESC = 0x1B,
+        DEL = 0x7F,
 };
 
 struct font {
@@ -669,6 +676,63 @@ void window_size_callback(GLFWwindow *window, int width, int height)
         glViewport(0, 0, width, height);
 }
 
+void interpret_byte_from_shell(struct frame *f, char c)
+{
+        switch (c) {
+                case ESC:
+                        read(f->master, &c, 1);
+
+                        switch (c) {
+                                case '[':
+                                        read(f->master, &c, 1);
+
+                                        switch (c) {
+                                                case 'f':
+                                                        for (int i = f->c.x; i < f->row; i++)
+                                                                f->line[f->c.y][i].c = 0;
+                                                        break;
+                                        }
+                                        break;
+                        }
+                        break;
+                case LF:
+                case VT:
+                        f->c.y++;
+                        break;
+                case CR:
+                        f->c.x = 0;
+                        break;
+                case HT:
+                        f->c.x = (f->c.x / 8 + 1) * 8;
+                        break;
+                case BEL:
+                        break;
+                case BS:
+                        f->c.x--;
+                        tputc(f, ' ');
+                        break;
+                default: {
+                         static uint8_t buf[4];
+                         static int n = 0;
+
+                         if (UTF8CONT(c)) {
+                                 buf[n++ + 1] = c;
+                                 f->c.x--;
+                                 tputc(f, utf8decode(buf, n + 1));
+                                 f->c.x++;
+                         } else {
+                                 if (n) {
+                                         n = 0;
+                                 }
+
+                                 tputc(f, c & 0xff);
+                                 f->c.x++;
+                                 buf[0] = c & 0xff;
+                         }
+                 }
+        }
+}
+
 void *read_shell(void *arg)
 {
         (void)arg;
@@ -676,59 +740,7 @@ void *read_shell(void *arg)
         while (1) {
                 char c;
                 if (read(k->master, &c, 1) < 0) break;
-
-                switch (c) {
-                        case ESC:
-                                read(k->master, &c, 1);
-
-                                switch (c) {
-                                        case '[':
-                                                read(k->master, &c, 1);
-
-                                                switch (c) {
-                                                        case 'K':
-                                                                for (int i = k->c.x; i < k->row; i++)
-                                                                        k->line[k->c.y][i].c = 0;
-                                                                break;
-                                                }
-                                                break;
-                                }
-                                break;
-                        case '\n':
-                                k->c.y++;
-                                break;
-                        case '\r':
-                                k->c.x = 0;
-                                break;
-                        case '\t':
-                                k->c.x += 8;
-                                break;
-                        case 7:
-                                /* bell */
-                                break;
-                        case 8:
-                                k->c.x--;
-                                break;
-                        default: {
-                                 static uint8_t buf[4];
-                                 static int n = 0;
-
-                                 if (UTF8CONT(c)) {
-                                         buf[n++ + 1] = c;
-                                         k->c.x--;
-                                         tputc(k, utf8decode(buf, n + 1));
-                                         k->c.x++;
-                                 } else {
-                                         if (n) {
-                                                 n = 0;
-                                         }
-
-                                         tputc(k, c & 0xff);
-                                         k->c.x++;
-                                         buf[0] = c & 0xff;
-                                 }
-                         }
-                }
+                interpret_byte_from_shell(k, c);
         }
 
         k->shell_done = true;
