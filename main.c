@@ -659,7 +659,7 @@ int load_fonts(struct frame *f)
                          * have to be able to treat the terminal like a grid.
                          */
                         f->w.cw = slot->metrics.horiAdvance / 64.0;
-                        f->w.ch = slot->metrics.vertAdvance / 64.0;
+                        f->w.ch = 1.25 * slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", f->w.cw, f->w.ch);
                 }
 
