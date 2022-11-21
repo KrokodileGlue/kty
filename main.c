@@ -55,7 +55,9 @@ struct font {
         int spritemap_dirty;
 
         char *vertices;
-        GLuint vbo;
+        char *textures;
+        GLuint vbo_vertices;
+        GLuint vbo_textures;
         int num_glyphs_in_vbo;
 
         int num_glyph;              /* The number of glyphs in the spritemap. */
@@ -69,6 +71,7 @@ struct glyph {
         enum {
                 GLYPH_NONE = 0,
                 GLYPH_WRAP = 1 << 0,
+                GLYPH_UNDERLINE = 1 << 1,
         } mode;
 };
 
@@ -85,6 +88,7 @@ struct font_renderer {
         /* FreeType */
         FT_Library ft;
 
+        /* TODO: Use a hashtable for this. */
         struct sprite {
                 uint32_t c;
                 struct font *font;
@@ -97,11 +101,23 @@ struct font_renderer {
         /* Fonts */
         struct font fonts[MAX_FONTS];
         int num_fonts;
+
+        /* VBO for rendering decoration and background colors */
+        GLuint vbo_decoration;
+        GLuint vbo_decoration_color;
+        char *decoration;
+        char *decoration_color;
+        unsigned num_decoration;
 };
 
 enum {
         ESC_START = 1,
         ESC_CSI = 1 << 1,
+};
+
+enum {
+        MODE_BOLD = 1,
+        MODE_UNDERLINE = 1 << 1,
 };
 
 struct frame {
@@ -115,9 +131,10 @@ struct frame {
         GLuint program;
 
         GLint attribute_coord;
+        GLint attribute_decoration_color;
         GLint uniform_tex;
         GLint uniform_color;
-        GLint uniform_is_color;
+        GLint uniform_is_solid;
 
         /* State */
         struct window w;
@@ -218,21 +235,21 @@ int init_gl_resources(struct frame *f)
          */
 
         const char vs[] = "#version 120\n\
-attribute vec4 coord;\n\
-varying vec2 texpos;\n\
+attribute vec2 coord;\n\
+attribute vec3 decoration_color;\n\
+varying vec3 dec_color;\n\
 void main(void) {\n\
         gl_Position = vec4(coord.xy, 0, 1);\n\
-        texpos = coord.zw;\n\
+        dec_color = decoration_color;\n\
 }";
 
         const char fs[] = "#version 120\n\
-varying vec2 texpos;\n\
+varying vec3 dec_color;\n\
 uniform sampler2D tex;\n\
 uniform vec4 color;\n\
-uniform bool is_color;\n\
+uniform int is_solid;\n\
 void main(void) {\n\
-        //gl_FragColor = texture2D(tex, texpos).a * color + vec4(0.25, 0.25, 0, 1);\n\
-        gl_FragColor = vec4(1, 1, 1, texture2D(tex, texpos).a) * color;\n\
+        gl_FragColor = is_solid == 1 ? vec4(dec_color, 1) : vec4(1, 1, 1, texture2D(tex, dec_color.xy).a) * color;\n\
 }";
 
         /* Compile each shader. */
@@ -259,8 +276,15 @@ void main(void) {\n\
         }
 
         f->attribute_coord = bind_attribute_to_program(f->program, "coord");
+        f->attribute_decoration_color = bind_attribute_to_program(f->program, "decoration_color");
         f->uniform_tex = bind_uniform_to_program(f->program, "tex");
         f->uniform_color = bind_uniform_to_program(f->program, "color");
+        f->uniform_is_solid = bind_uniform_to_program(f->program, "is_solid");
+
+        /* Enabling blending allows us to use alpha textures. */
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 0.75, 0.75, 0.75, 1 });
 
         return 0;
 }
@@ -363,8 +387,9 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         return &f->font.glyph[f->font.num_glyph++];
 }
 
-int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
+int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 {
+        uint32_t c = g.c;
         struct sprite *sprite = get_sprite(f, c);
 
         if (!sprite) {
@@ -385,25 +410,69 @@ int render_glyph(struct frame *f, uint32_t c, int x0, int y0)
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
 
-        struct point {
-                GLfloat x;
-                GLfloat y;
-                GLfloat s;
-                GLfloat t;
+        struct {
+                GLfloat x, y;
         } box[6] = {
-                { x2    , -y2    , sprite->tex_coords[0], sprite->tex_coords[1] },
-                { x2 + w, -y2    , sprite->tex_coords[2], sprite->tex_coords[1] },
-                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[3] },
+                { x2    , -y2     },
+                { x2 + w, -y2     },
+                { x2    , -y2 - h },
 
-                { x2 + w, -y2 - h, sprite->tex_coords[2], sprite->tex_coords[3] },
-                { x2 + w, -y2    , sprite->tex_coords[2], sprite->tex_coords[1] },
-                { x2    , -y2 - h, sprite->tex_coords[0], sprite->tex_coords[3] },
+                { x2 + w, -y2 - h },
+                { x2 + w, -y2     },
+                { x2    , -y2 - h },
+        };
+
+        struct {
+                GLfloat s, t, v;
+        } col[6] = {
+                { sprite->tex_coords[0], sprite->tex_coords[1], 0 },
+                { sprite->tex_coords[2], sprite->tex_coords[1], 0 },
+                { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
+
+                { sprite->tex_coords[2], sprite->tex_coords[3], 0 },
+                { sprite->tex_coords[2], sprite->tex_coords[1], 0 },
+                { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
         };
 
         struct font *font = sprite->font;
 
         memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
+        memcpy(font->textures + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
         font->num_glyphs_in_vbo++;
+
+        if (g.mode & GLYPH_UNDERLINE) {
+                float w = x;
+                float s = y - 3 * sy;
+                float n = s + 1 * sy;
+                float e = x + f->w.cw * sx;
+                struct { 
+                        GLfloat x, y;
+                } box[6] = {
+                        { w, n },
+                        { e, n },
+                        { w, s },
+                        { e, s },
+                        { e, n },
+                        { w, s },
+                };
+
+                struct {
+                        GLfloat r, g, b;
+                } col[6] = {
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                };
+
+                memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
+                        box, sizeof box);
+                memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
+                        col, sizeof col);
+                f->font.num_decoration++;
+        }
 
         return 0;
 }
@@ -412,14 +481,52 @@ void render(struct frame *f)
 {
         for (int i = 0; i < f->font.num_fonts; i++)
                 f->font.fonts[i].num_glyphs_in_vbo = 0;
+        f->font.num_decoration = 0;
 
         for (int i = 0; i < f->row; i++) {
                 for (int j = 0; j < f->col; j++) {
                         if (!f->line[i][j].c) continue;
                         //printf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
-                        render_glyph(f, f->line[i][j].c, j, i);
+                        render_glyph(f, f->line[i][j], j, i);
                 }
         }
+
+        /* Render the quads. */
+        glUniform1i(f->uniform_is_solid, 1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, f->font.vbo_decoration);
+        glEnableVertexAttribArray(f->attribute_coord);
+
+        /* Upload the VBO. */
+        glBufferData(GL_ARRAY_BUFFER,
+                f->font.num_decoration * 6 * 2 * sizeof(GLfloat),
+                f->font.decoration,
+                GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(f->attribute_coord,
+                2,
+                GL_FLOAT,
+                GL_FALSE,
+                2 * sizeof(GLfloat),
+                0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, f->font.vbo_decoration_color);
+        glEnableVertexAttribArray(f->attribute_decoration_color);
+
+        /* Upload the VBO. */
+        glBufferData(GL_ARRAY_BUFFER,
+                f->font.num_decoration * 6 * 3 * sizeof(GLfloat),
+                f->font.decoration_color,
+                GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(f->attribute_decoration_color,
+                3,
+                GL_FLOAT,
+                GL_FALSE,
+                3 * sizeof(GLfloat),
+                0);
+
+        glDrawArrays(GL_TRIANGLES, 0, f->font.num_decoration * 6);
 
         /*
          * So each glyph has been rendered into its font's spritesheet at this
@@ -429,17 +536,11 @@ void render(struct frame *f)
         f->font.num_fonts = 1;
         for (int i = 0; i < f->font.num_fonts; i++) {
                 struct font *font = f->font.fonts + i;
-                //printf("Rendering %s\n", font->path);
-
-
-                /* Enabling blending allows us to use alpha textures. */
-                glEnable(GL_BLEND);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glUniform4fv(f->uniform_color, 1, (GLfloat []){ 0.75, 0.75, 0.75, 1 });
 
                 glActiveTexture(GL_TEXTURE0);
                 glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
                 glUniform1i(f->uniform_tex, 0);
+                glUniform1i(f->uniform_is_solid, 0);
 
                 glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -449,20 +550,36 @@ void render(struct frame *f)
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-                glBindBuffer(GL_ARRAY_BUFFER, font->vbo);
+                glBindBuffer(GL_ARRAY_BUFFER, font->vbo_vertices);
                 glEnableVertexAttribArray(f->attribute_coord);
 
                 /* Upload the VBO. */
                 glBufferData(GL_ARRAY_BUFFER,
-                        font->num_glyphs_in_vbo * 6 * 4 * sizeof(GLfloat),
+                        font->num_glyphs_in_vbo * 6 * 2 * sizeof(GLfloat),
                         font->vertices,
                         GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(f->attribute_coord,
-                        4,
+                        2,
                         GL_FLOAT,
                         GL_FALSE,
-                        4 * sizeof(GLfloat),
+                        2 * sizeof(GLfloat),
+                        0);
+
+                glBindBuffer(GL_ARRAY_BUFFER, font->vbo_textures);
+                glEnableVertexAttribArray(f->attribute_decoration_color);
+
+                /* Upload the VBO. */
+                glBufferData(GL_ARRAY_BUFFER,
+                        font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
+                        font->textures,
+                        GL_DYNAMIC_DRAW);
+
+                glVertexAttribPointer(f->attribute_decoration_color,
+                        3,
+                        GL_FLOAT,
+                        GL_FALSE,
+                        3 * sizeof(GLfloat),
                         0);
 
                 if (font->spritemap_dirty) {
@@ -556,14 +673,22 @@ int load_fonts(struct frame *f)
                          * TODO: Don't just hardcode this. The size obviously
                          * needs to fit inside of a single GPU texture...
                          */
-                        .vertices = calloc(NUM_GLYPH * 2, 6 * 4 * sizeof(GLfloat)),
+                        .vertices = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat)),
+                        .textures = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
                         .sprite_buffer = calloc(1, 2048 * 2048),
                 };
 
                 /* Get a free VBO number. */
-                glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo);
+                glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo_vertices);
+                glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo_textures);
                 glGenTextures(1, &f->font.fonts[f->font.num_fonts - 1].sprite_texture);
         }
+
+        /* Generate the underline VBO. */
+        glGenBuffers(1, &f->font.vbo_decoration);
+        f->font.decoration = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat));
+        glGenBuffers(1, &f->font.vbo_decoration_color);
+        f->font.decoration_color = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat));
 
         return 0;
 }
@@ -638,7 +763,7 @@ void tprintc(struct frame *f, uint32_t c)
 {
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
-                .mode = GLYPH_NONE,
+                .mode = GLYPH_NONE | (f->mode & MODE_UNDERLINE ? GLYPH_UNDERLINE : 0),
         };
 }
 
@@ -710,6 +835,27 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                         f->line[i][j] = (struct glyph){ 0 };
 }
 
+void handle_csi_graphics(struct frame *f)
+{
+        switch (f->csi.arg[0]) {
+        case 1: /* Bold */
+                f->mode |= MODE_BOLD;
+                break;
+        case 22: /* Turn off bold */
+                f->mode &= ~MODE_BOLD;
+                break;
+        case 4: /* Underline */
+                f->mode |= MODE_UNDERLINE;
+                break;
+        case 24: /* Turn off underline */
+                f->mode &= ~MODE_UNDERLINE;
+                break;
+        default:
+                fprintf(stderr, "Uknown CSI sequence argument %ld\n", f->csi.arg[0]);
+                break;
+        }
+}
+
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
@@ -718,7 +864,7 @@ void csihandle(struct frame *f)
                 fprintf(stderr, "-> unimplemented\n");
                 break;
         case 'm': /* TODO: Implement bold/italics/underline/etc. */
-                fprintf(stderr, "-> unimplemented\n");
+                handle_csi_graphics(f);
                 break;
         case 'H':
                 f->c.x = f->c.y = 0;
@@ -753,6 +899,11 @@ void csihandle(struct frame *f)
 void resetcsi(struct frame *f)
 {
         memset(&f->csi, 0, sizeof f->csi);
+}
+
+void resetesc(struct frame *f)
+{
+        f->esc = 0;
 }
 
 void eschandle(struct frame *f, uint32_t c)
@@ -802,6 +953,7 @@ void tputc(struct frame *f, uint32_t c)
                                 csiparse(f);
                                 csihandle(f);
                                 resetcsi(f);
+                                resetesc(f);
                         }
                         return;
                 } else {
