@@ -67,17 +67,24 @@ struct font {
         int load_flags;
 };
 
+enum {
+        GLYPH_WRAP = 1,
+        GLYPH_UNDERLINE = 1 << 1,
+        GLYPH_BOLD = 1 << 2,
+        GLYPH_ITALIC = 1 << 3,
+        GLYPH_DIM = 1 << 4,
+        GLYPH_BLINKING = 1 << 5,
+        GLYPH_INVERSE = 1 << 5,
+        GLYPH_MAX = 1 << 7,
+};
+
 struct glyph {
         uint32_t c;
-        enum {
-                GLYPH_NONE = 0,
-                GLYPH_WRAP = 1 << 0,
-                GLYPH_UNDERLINE = 1 << 1,
-        } mode;
+        int mode;
 };
 
 struct cursor {
-        int x, y;
+        int x, y, mode;
 };
 
 struct window {
@@ -117,8 +124,7 @@ enum {
 };
 
 enum {
-        MODE_BOLD = 1,
-        MODE_UNDERLINE = 1 << 1,
+        MODE_CURSOR_VISIBLE = 1,
 };
 
 struct frame {
@@ -535,7 +541,8 @@ void render(struct frame *f)
         }
 
         /* Add the cursor to the decoration VBO. */
-        render_cursor(f);
+        if (f->mode & MODE_CURSOR_VISIBLE)
+                render_cursor(f);
 
         /* Render the quads. */
         glUniform1i(f->uniform_is_solid, 1);
@@ -809,7 +816,7 @@ void tprintc(struct frame *f, uint32_t c)
 {
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
-                .mode = GLYPH_NONE | (f->mode & MODE_UNDERLINE ? GLYPH_UNDERLINE : 0),
+                .mode = f->c.mode & GLYPH_UNDERLINE ? GLYPH_UNDERLINE : 0,
         };
 }
 
@@ -854,7 +861,7 @@ void csiparse(struct frame *f)
 		np = NULL;
 		v = strtol(p, &np, 10);
 		if (np == p)
-			v = 0;
+			break;
 		if (v == LONG_MAX || v == LONG_MIN)
 			v = -1;
 		f->csi.arg[f->csi.narg++] = v;
@@ -881,41 +888,87 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                         f->line[i][j] = (struct glyph){ 0 };
 }
 
-void handle_csi_graphics(struct frame *f)
+void get_csi_graphic_mode(long arg, int *mode)
 {
-        switch (f->csi.arg[0]) {
+        switch (arg) {
+        case 0:
+                *mode = 0;
+                break;
         case 1: /* Bold */
-                f->mode |= MODE_BOLD;
+                *mode |= GLYPH_BOLD;
                 break;
         case 22: /* Turn off bold */
-                f->mode &= ~MODE_BOLD;
+                *mode &= ~GLYPH_BOLD;
                 break;
         case 4: /* Underline */
-                f->mode |= MODE_UNDERLINE;
+                *mode |= GLYPH_UNDERLINE;
                 break;
         case 24: /* Turn off underline */
-                f->mode &= ~MODE_UNDERLINE;
+                *mode &= ~GLYPH_UNDERLINE;
+                break;
+        case 7:
+                *mode |= GLYPH_INVERSE;
+                break;
+        case 27:
+                *mode &= ~GLYPH_INVERSE;
                 break;
         default:
-                fprintf(stderr, "Uknown CSI sequence argument %ld\n", f->csi.arg[0]);
+                fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
                 break;
         }
+}
+
+void handle_terminal_mode(struct frame *f, int set)
+{
+        int mode = 0;
+
+        switch (f->csi.arg[0]) {
+        case 25: /* Make cursor visible */
+                mode |= MODE_CURSOR_VISIBLE;
+                break;
+        }
+
+        if (set) f->mode |= mode;
+        else f->mode &= ~mode;
 }
 
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
-        case 'h': /* TODO: Set terminal mode. */
-        case 'l': /* TODO: Reset terminal mode. */
-                fprintf(stderr, "-> unimplemented\n");
+        case 'A': /* Move cursor up n lines */
+                f->c.y -= f->csi.arg[0];
                 break;
-        case 'm': /* TODO: Implement bold/italics/underline/etc. */
-                handle_csi_graphics(f);
+        case 'B': /* Move cursor down n lines */
+                f->c.y += f->csi.arg[0];
+                break;
+        case 'C': /* Move cursor right n lines */
+                f->c.y += f->csi.arg[0];
+                break;
+        case 'D': /* Move cursor left n lines */
+                f->c.y -= f->csi.arg[0];
+                break;
+        case 'h': /* Set terminal mode */
+                handle_terminal_mode(f, 1);
+                break;
+        case 'l': /* Reset terminal mode */
+                handle_terminal_mode(f, 0);
+                break;
+        case 'm':
+                if (!f->csi.narg) {
+                        get_csi_graphic_mode(0, &f->c.mode);
+                } else {
+                        for (int i = 0; i < f->csi.narg; i++)
+                                get_csi_graphic_mode(f->csi.arg[i],
+                                        &f->line[f->c.y][f->c.x].mode);
+                }
                 break;
         case 'H':
-                f->c.x = f->c.y = 0;
+                if (!f->csi.narg)
+                        f->c.x = f->c.y = 0;
+                else
+                        f->c.x = f->csi.arg[1] - 1, f->c.y = f->csi.arg[0] - 1;
                 break;
-        case 'J':
+        case 'J': /* Clear screen */
                 switch (f->csi.arg[0]) {
                 case 0: /* below */
                         tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
@@ -935,6 +988,14 @@ void csihandle(struct frame *f)
                         fprintf(stderr, "Unknown clear argument %ld\n", f->csi.arg[0]);
                         break;
                 }
+                break;
+        case 'K':
+                if (!f->csi.narg || f->csi.arg[0] == 0)
+                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                else if (f->csi.arg[0] == 1)
+                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
+                else if (f->csi.arg[0] == 2)
+                        tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
                 break;
         default:
                 fprintf(stderr, "Unhandled escape sequence\n");
@@ -1169,6 +1230,7 @@ int main(int, char **, char **env)
         if (!k) return 1;
 
         k->master = master;
+        k->mode = MODE_CURSOR_VISIBLE;
 
         if (!glfwInit()) return 1;
 
