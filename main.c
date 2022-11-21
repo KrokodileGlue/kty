@@ -83,8 +83,13 @@ struct glyph {
         int mode;
 };
 
+enum {
+        CURSOR_ORIGIN = 1,
+        CURSOR_WRAPNEXT = 1 << 1,
+};
+
 struct cursor {
-        int x, y, mode;
+        int x, y, mode, state;
 };
 
 struct window {
@@ -146,6 +151,7 @@ struct frame {
         /* State */
         struct window w;
         int col, row;
+        int top, bot; /* Required for tsetscroll */
         struct cursor c;
         struct glyph **line;
 
@@ -816,8 +822,78 @@ void tprintc(struct frame *f, uint32_t c)
 {
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
-                .mode = f->c.mode & GLYPH_UNDERLINE ? GLYPH_UNDERLINE : 0,
+                .mode = f->c.mode,
         };
+}
+
+void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
+{
+        for (int i = y0; i < y1; i++)
+                for (int j = x0; j < x1; j++)
+                        f->line[i][j] = (struct glyph){ 0 };
+}
+
+int limit(int *x, int y, int z)
+{
+        if (*x < y) *x = y;
+        if (*x > z) *x = z;
+        return *x;
+}
+
+void tmoveto(struct frame *f, int x, int y)
+{
+	int miny, maxy;
+
+	if (f->c.state & CURSOR_ORIGIN) {
+		miny = f->top;
+		maxy = f->bot;
+	} else {
+		miny = 0;
+		maxy = f->row - 1;
+	}
+
+	f->c.state &= ~CURSOR_WRAPNEXT;
+	f->c.x = limit(&x, 0, f->col - 1);
+	f->c.y = limit(&y, miny, maxy);
+}
+
+void tsetscroll(struct frame *f, int top, int bot)
+{
+        if (bot < 0) bot = 0;
+        if (bot >= f->row) bot = f->row - 1;
+        if (top < 0) top = 0;
+        if (top >= f->row) top = f->row - 1;
+
+        if (bot > top) {
+                int tmp = bot;
+                bot = top;
+                top = tmp;
+        }
+
+        f->top = top;
+        f->bot = bot;
+}
+
+void tscrolldown(struct frame *f, int orig, int n)
+{
+        tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
+
+        for (int i = f->bot; i >= orig + n; i--) {
+                struct glyph *temp = f->line[i];
+                f->line[i] = f->line[i - n];
+                f->line[i - n] = temp;
+        }
+}
+
+void tscrollup(struct frame *f, int orig, int n)
+{
+        tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
+
+        for (int i = orig; i < f->bot - n; i++) {
+                struct glyph *tmp = f->line[i];
+                f->line[i] = f->line[i + n];
+                f->line[i + n] = tmp;
+        }
 }
 
 void tcontrolcode(struct frame *f, uint32_t c)
@@ -831,10 +907,10 @@ void tcontrolcode(struct frame *f, uint32_t c)
                 f->c.y++;
                 break;
         case CR:
-                f->c.x = 0;
+                tmoveto(f, 0, f->c.y);
                 break;
         case HT:
-                f->c.x = (f->c.x / 8 + 1) * 8;
+                tmoveto(f, (f->c.x / 8 + 1) * 8, f->c.y);
                 break;
         case BEL:
                 break;
@@ -866,7 +942,7 @@ void csiparse(struct frame *f)
 			v = -1;
 		f->csi.arg[f->csi.narg++] = v;
 		p = np;
-		if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
+		if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
 			break;
 		p++;
 	}
@@ -879,13 +955,6 @@ void csiparse(struct frame *f)
                 printf("<arg:%ld> [;]", f->csi.arg[i]);
         printf("] <mode:%d:%c> [<mode:%d>]]", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
         puts("");
-}
-
-void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
-{
-        for (int i = y0; i < y1; i++)
-                for (int j = x0; j < x1; j++)
-                        f->line[i][j] = (struct glyph){ 0 };
 }
 
 void get_csi_graphic_mode(long arg, int *mode)
@@ -942,31 +1011,19 @@ void csihandle(struct frame *f)
                 f->c.y += f->csi.arg[0];
                 break;
         case 'C': /* Move cursor right n lines */
-                f->c.y += f->csi.arg[0];
+                f->c.x += f->csi.arg[0];
                 break;
         case 'D': /* Move cursor left n lines */
-                f->c.y -= f->csi.arg[0];
+                f->c.x -= f->csi.arg[0];
                 break;
         case 'h': /* Set terminal mode */
                 handle_terminal_mode(f, 1);
                 break;
-        case 'l': /* Reset terminal mode */
-                handle_terminal_mode(f, 0);
-                break;
-        case 'm':
-                if (!f->csi.narg) {
-                        get_csi_graphic_mode(0, &f->c.mode);
-                } else {
-                        for (int i = 0; i < f->csi.narg; i++)
-                                get_csi_graphic_mode(f->csi.arg[i],
-                                        &f->line[f->c.y][f->c.x].mode);
-                }
-                break;
-        case 'H':
+        case 'H': /* CUP - Move cursor too coordinates */
                 if (!f->csi.narg)
-                        f->c.x = f->c.y = 0;
+                        tmoveto(f, 0, 0);
                 else
-                        f->c.x = f->csi.arg[1] - 1, f->c.y = f->csi.arg[0] - 1;
+                        tmoveto(f, f->csi.arg[1] - 1, f->csi.arg[0] - 1);
                 break;
         case 'J': /* Clear screen */
                 switch (f->csi.arg[0]) {
@@ -989,13 +1046,43 @@ void csihandle(struct frame *f)
                         break;
                 }
                 break;
-        case 'K':
+        case 'K': /* EL - Clear line */
                 if (!f->csi.narg || f->csi.arg[0] == 0)
                         tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
                 else if (f->csi.arg[0] == 1)
                         tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
                 else if (f->csi.arg[0] == 2)
                         tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
+                break;
+        case 'l': /* Reset terminal mode */
+                handle_terminal_mode(f, 0);
+                break;
+        case 'L':
+                tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+        case 'm':
+                if (!f->csi.narg) {
+                        get_csi_graphic_mode(0, &f->c.mode);
+                } else {
+                        for (int i = 0; i < f->csi.narg; i++)
+                                get_csi_graphic_mode(f->csi.arg[i], &f->c.mode);
+                }
+                break;
+        case 'M': /* DL - Delete n lines */
+                tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+        case 'r': /* DECSTBM - Set scroll region */
+                if (!f->csi.narg) tsetscroll(f, 1, f->row);
+                tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
+                break;
+        case 'X': /* ECH - Erase n chars */
+                tclearregion(f, f->c.x, f->c.y,
+                        f->c.x + (f->csi.narg ? f->csi.arg[0] : 1) - 1, f->c.y);
+                break;
+        case ' ':
+                if (f->csi.mode[1] == 'q') {
+                        /* TODO: Set cursor style. */
+                }
                 break;
         default:
                 fprintf(stderr, "Unhandled escape sequence\n");
@@ -1026,6 +1113,7 @@ void tputc(struct frame *f, uint32_t c)
 {
         //printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
 
+        /* TODO: ??? */
         if (f->c.x >= f->col) f->c.x = f->col - 1;
 
         /*
@@ -1066,7 +1154,7 @@ void tputc(struct frame *f, uint32_t c)
                 } else {
                         eschandle(f, c);
                 }
-        } else if (f->c.x + 1 < f->col) {
+        } else if (f->c.x < f->col) {
                 tprintc(f, c);
                 f->c.x++;
         }
@@ -1155,7 +1243,10 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 write(k->master, (char []){'\n'}, 1);
                 break;
         case GLFW_KEY_BACKSPACE:
-                write(k->master, (char []){8}, 1);
+                write(k->master, (char []){'\b'}, 1);
+                break;
+        case GLFW_KEY_ESCAPE:
+                write(k->master, (char []){'\x1b'}, 1);
                 break;
         }
 }
