@@ -23,6 +23,7 @@
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
 #define NUM_GLYPH 2000
+#define LINE_SPACING 4
 
 /* How long could an escape sequence possibly be. */
 #define ESC_ARG_SIZE 512
@@ -404,7 +405,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 
         /* Calculate the vertex and texture coordinates */
         float x = -1 + (f->w.cw * x0) * sx;
-        float y = 1 - (f->w.ch * (1 + y0)) * sy;
+        float y = 1 - (f->w.ch * (1 + y0)) * sy - LINE_SPACING * y0 * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - sprite->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
@@ -477,6 +478,48 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         return 0;
 }
 
+void render_cursor(struct frame *f)
+{
+        float sx = 2.0 / (float)f->w.width;
+        float sy = 2.0 / (float)f->w.height;
+
+        float w = -1 + (f->w.cw * f->c.x) * sx;
+        float n = 1 - (f->w.ch * f->c.y) * sy - LINE_SPACING * f->c.y * sy;
+
+        float s = n - f->w.ch * sy;
+        float e = w + f->w.cw * sx;
+
+        s -= 4 * sy;
+
+        struct {
+                GLfloat x, y;
+        } box[6] = {
+                { w, n },
+                { e, n },
+                { w, s },
+                { e, s },
+                { e, n },
+                { w, s },
+        };
+
+        struct {
+                GLfloat r, g, b;
+        } col[6] = {
+                { 1, 1, 1 },
+                { 1, 1, 1 },
+                { 1, 1, 1 },
+                { 1, 1, 1 },
+                { 1, 1, 1 },
+                { 1, 1, 1 },
+        };
+
+        memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
+                box, sizeof box);
+        memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
+                col, sizeof col);
+        f->font.num_decoration++;
+}
+
 void render(struct frame *f)
 {
         for (int i = 0; i < f->font.num_fonts; i++)
@@ -490,6 +533,9 @@ void render(struct frame *f)
                         render_glyph(f, f->line[i][j], j, i);
                 }
         }
+
+        /* Add the cursor to the decoration VBO. */
+        render_cursor(f);
 
         /* Render the quads. */
         glUniform1i(f->uniform_is_solid, 1);
@@ -659,7 +705,7 @@ int load_fonts(struct frame *f)
                          * have to be able to treat the terminal like a grid.
                          */
                         f->w.cw = slot->metrics.horiAdvance / 64.0;
-                        f->w.ch = 1.25 * slot->metrics.vertAdvance / 64.0;
+                        f->w.ch = slot->metrics.vertAdvance / 64.0;
                         printf("%d,%d\n", f->w.cw, f->w.ch);
                 }
 
@@ -1057,7 +1103,7 @@ void window_size_callback(GLFWwindow *window, int width, int height)
 {
         (void)window;
         k->w.width = width, k->w.height = height;
-        tresize(k, width / k->w.cw, height / k->w.ch);
+        tresize(k, width / k->w.cw, height / (k->w.ch + LINE_SPACING));
         glViewport(0, 0, width, height);
 }
 
