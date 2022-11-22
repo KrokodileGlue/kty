@@ -1153,12 +1153,7 @@ void tputc(struct frame *f, uint32_t c)
          */
         if (f->c.y >= f->row) {
                 int diff = f->c.y - f->row + 1;
-                for (int i = diff; i < f->row; i++) {
-                        f->line[i - diff] = f->line[i];
-                }
-                for (int i = f->row - diff; i < f->row; i++)
-                        f->line[i] = calloc(f->col, sizeof *f->line[i]);
-                f->c.y -= diff;
+                tscrollup(f, f->row - 1, diff);
         }
 
         /* Here's the legwork of actually interpreting commands. */
@@ -1269,15 +1264,37 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (action != GLFW_PRESS) return;
 
+        /*
+         * The GLFW keycode things are hardcoded
+         * (https://www.glfw.org/docs/3.3/group__keys.html), so it's safe to
+         * use this conditional.
+         */
+        if (key >= 'A' && key <= 'Z' && mods & GLFW_MOD_CONTROL) {
+                write(k->master, (char []){ key - 'A' + 1 }, 1);
+                return;
+        }
+
         switch (key) {
         case GLFW_KEY_ENTER:
-                write(k->master, (char []){'\n'}, 1);
+                write(k->master, "\n", 1);
                 break;
         case GLFW_KEY_BACKSPACE:
-                write(k->master, (char []){'\b'}, 1);
+                write(k->master, "\b", 1);
                 break;
         case GLFW_KEY_ESCAPE:
-                write(k->master, (char []){'\x1b'}, 1);
+                write(k->master, "\x1b", 1);
+                break;
+        case GLFW_KEY_LEFT:
+                write(k->master, "\x1b[D", 3);
+                break;
+        case GLFW_KEY_RIGHT:
+                write(k->master, "\x1b[C", 3);
+                break;
+        case GLFW_KEY_UP:
+                write(k->master, "\x1b[A", 3);
+                break;
+        case GLFW_KEY_DOWN:
+                write(k->master, "\x1b[B", 3);
                 break;
         }
 }
