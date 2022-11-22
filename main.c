@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include <unistd.h>
 #include <pthread.h> /* TODO: Windows support. */
@@ -31,6 +32,20 @@
 #define ISCONTROLC0(c) ((0 < c && c < 0x1f) || (c) == 0x7f)
 #define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
 #define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
+
+void dprintf(const char *func, const char *fmt, ...)
+{
+        va_list args;
+        va_start(args, fmt);
+        struct tm *t = localtime(&(time_t){time(NULL)});
+        char buf[BUFSIZ];
+        strftime(buf, sizeof buf, "%M:%S", t);
+        fprintf(stderr, "%s ", buf);
+        vfprintf(stderr, fmt, args);
+        va_end(args);
+}
+
+#define dprintf(...) dprintf(__func__, __VA_ARGS__)
 
 enum {
         BEL = 0x07,
@@ -84,6 +99,7 @@ struct glyph {
 };
 
 enum {
+        CURSOR_DEFAULT = 0,
         CURSOR_ORIGIN = 1,
         CURSOR_WRAPNEXT = 1 << 1,
 };
@@ -517,12 +533,12 @@ void render_cursor(struct frame *f)
         struct {
                 GLfloat r, g, b;
         } col[6] = {
-                { 1, 1, 1 },
-                { 1, 1, 1 },
-                { 1, 1, 1 },
-                { 1, 1, 1 },
-                { 1, 1, 1 },
-                { 1, 1, 1 },
+                { 0, 0.5, 0.5 },
+                { 0, 0.5, 0.5 },
+                { 0, 0.5, 0.5 },
+                { 0, 0.5, 0.5 },
+                { 0, 0.5, 0.5 },
+                { 0, 0.5, 0.5 },
         };
 
         memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
@@ -800,7 +816,7 @@ int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
 
 void tresize(struct frame *f, int col, int row)
 {
-        printf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
+        dprintf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
 
         f->line = realloc(f->line, row * sizeof *f->line);
 
@@ -820,7 +836,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        dprintf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode,
@@ -829,9 +845,11 @@ void tprintc(struct frame *f, uint32_t c)
 
 void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
-        for (int i = y0; i < y1; i++)
-                for (int j = x0; j < x1; j++)
-                        f->line[i][j] = (struct glyph){ 0 };
+        dprintf("tclearregion(%d,%d,%d,%d)\n", x0, y0, x1, y1);
+
+        for (int i = y0; i <= y1; i++)
+                for (int j = x0; j <= x1; j++)
+                        f->line[i][j] = (struct glyph){ 0, 0 };
 }
 
 int limit(int *x, int y, int z)
@@ -843,6 +861,8 @@ int limit(int *x, int y, int z)
 
 void tmoveto(struct frame *f, int x, int y)
 {
+        dprintf("tmoveto(%d,%d)\n", x, y);
+
 	int miny, maxy;
 
 	if (f->c.state & CURSOR_ORIGIN) {
@@ -858,14 +878,18 @@ void tmoveto(struct frame *f, int x, int y)
 	f->c.y = limit(&y, miny, maxy);
 }
 
+void tmoveato(struct frame *f, int x, int y)
+{
+        dprintf("tmoveato(%d,%d)\n", x, y);
+	tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top: 0));
+}
+
 void tsetscroll(struct frame *f, int top, int bot)
 {
-        if (bot < 0) bot = 0;
-        if (bot >= f->row) bot = f->row - 1;
-        if (top < 0) top = 0;
-        if (top >= f->row) top = f->row - 1;
+        limit(&bot, 0, f->row - 1);
+        limit(&top, 0, f->row - 1);
 
-        if (bot > top) {
+        if (top > bot) {
                 int tmp = bot;
                 bot = top;
                 top = tmp;
@@ -888,9 +912,11 @@ void tscrolldown(struct frame *f, int orig, int n)
 
 void tscrollup(struct frame *f, int orig, int n)
 {
+        dprintf("tscrollup(%d,%d)\n", orig, n);
+
         tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
 
-        for (int i = orig; i < f->bot - n; i++) {
+        for (int i = orig; i <= f->bot - n; i++) {
                 struct glyph *tmp = f->line[i];
                 f->line[i] = f->line[i + n];
                 f->line[i + n] = tmp;
@@ -899,13 +925,14 @@ void tscrollup(struct frame *f, int orig, int n)
 
 void tcontrolcode(struct frame *f, uint32_t c)
 {
+        dprintf("control code %"PRIX32"\n", c);
         switch (c) {
         case ESC:
                 f->esc |= ESC_START;
                 break;
         case LF:
         case VT:
-                f->c.y++;
+                tmoveto(f, f->c.x, f->c.y + 1);
                 break;
         case CR:
                 tmoveto(f, 0, f->c.y);
@@ -916,7 +943,7 @@ void tcontrolcode(struct frame *f, uint32_t c)
         case BEL:
                 break;
         case BS:
-                f->c.x--;
+                tmoveto(f, f->c.x - 1, f->c.y);
                 tprintc(f, ' ');
                 break;
         }
@@ -1002,20 +1029,22 @@ void handle_terminal_mode(struct frame *f, int set)
         else f->mode &= ~mode;
 }
 
+#define DEFAULT(x, y) (f->csi.narg ? (x) : (y))
+
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
         case 'A': /* Move cursor up n lines */
-                tmoveto(f, f->c.x, f->c.y - f->csi.arg[0]);
+                tmoveto(f, f->c.x, f->c.y - DEFAULT(f->csi.arg[0], 1));
                 break;
         case 'B': /* Move cursor down n lines */
-                tmoveto(f, f->c.x, f->c.y + f->csi.arg[0]);
+                tmoveto(f, f->c.x, f->c.y + DEFAULT(f->csi.arg[0], 1));
                 break;
         case 'C': /* Move cursor right n lines */
-                tmoveto(f, f->c.x + f->csi.arg[0], f->c.y);
+                tmoveto(f, f->c.x + DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
         case 'D': /* Move cursor left n lines */
-                tmoveto(f, f->c.x - f->csi.arg[0], f->c.y);
+                tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
         case 'h': /* Set terminal mode */
                 handle_terminal_mode(f, 1);
@@ -1073,12 +1102,13 @@ void csihandle(struct frame *f)
                 tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
         case 'r': /* DECSTBM - Set scroll region */
-                if (!f->csi.narg) tsetscroll(f, 1, f->row);
-                tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
+                if (!f->csi.narg) tsetscroll(f, 0, f->row - 1);
+                else tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
+                tmoveato(f, 0, 0);
                 break;
         case 'X': /* ECH - Erase n chars */
                 tclearregion(f, f->c.x, f->c.y,
-                        f->c.x + (f->csi.narg ? f->csi.arg[0] : 1) - 1, f->c.y);
+                        f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
                 break;
         case ' ':
                 if (f->csi.mode[1] == 'q') {
@@ -1112,7 +1142,7 @@ void eschandle(struct frame *f, uint32_t c)
 
 void tputc(struct frame *f, uint32_t c)
 {
-        //printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        //dprintf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
 
         /* TODO: ??? */
         if (f->c.x >= f->col) f->c.x = f->col - 1;
