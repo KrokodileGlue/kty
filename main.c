@@ -701,8 +701,8 @@ int load_fonts(struct frame *f)
         /* TODO: Get fonts from command line options. */
 
         const char *path[] = {
-                //"SourceCodePro-Regular.otf",
-                "DejaVuSansMono.ttf",
+                "SourceCodePro-Regular.otf",
+                //"DejaVuSansMono.ttf",
                 //"NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
         };
