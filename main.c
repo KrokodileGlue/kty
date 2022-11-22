@@ -1312,10 +1312,25 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
+        /*
+         * TODO: Obviously to support multiple frames in a single window this
+         * will need to be generalized so that it updates all of the frames.
+         * That's a relatively complex tiling window manager type of operation,
+         * so for now I'll just assume one frame. 
+         */
+
         (void)window;
         k->w.width = width, k->w.height = height;
         tresize(k, width / k->w.cw, height / (k->w.ch + LINE_SPACING));
         glViewport(0, 0, width, height);
+
+        struct winsize ws = {
+                .ws_col = k->col,
+                .ws_row = k->row,
+        };
+
+        if (ioctl(k->master, TIOCSWINSZ, &ws) == -1)
+                perror("ioctl");
 }
 
 int main(int, char **, char **env)
