@@ -297,7 +297,7 @@ void main(void) {\n\
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 0.75, 0.75, 0.75, 1 });
+        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 1, 1, 1 });
 
         return 0;
 }
@@ -661,7 +661,7 @@ void render(struct frame *f)
 
 void display(struct frame *f)
 {
-        glClearColor(0.05, 0.05, 0.05, 1);
+        glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         render(f);
 }
@@ -820,6 +820,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
+        printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode,
@@ -1005,16 +1006,16 @@ void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
         case 'A': /* Move cursor up n lines */
-                f->c.y -= f->csi.arg[0];
+                tmoveto(f, f->c.x, f->c.y - f->csi.arg[0]);
                 break;
         case 'B': /* Move cursor down n lines */
-                f->c.y += f->csi.arg[0];
+                tmoveto(f, f->c.x, f->c.y + f->csi.arg[0]);
                 break;
         case 'C': /* Move cursor right n lines */
-                f->c.x += f->csi.arg[0];
+                tmoveto(f, f->c.x + f->csi.arg[0], f->c.y);
                 break;
         case 'D': /* Move cursor left n lines */
-                f->c.x -= f->csi.arg[0];
+                tmoveto(f, f->c.x - f->csi.arg[0], f->c.y);
                 break;
         case 'h': /* Set terminal mode */
                 handle_terminal_mode(f, 1);
