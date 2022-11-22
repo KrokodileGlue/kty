@@ -146,6 +146,7 @@ enum {
 
 enum {
         MODE_CURSOR_VISIBLE = 1,
+        MODE_CRLF = 1 << 1,
 };
 
 struct frame {
@@ -700,7 +701,8 @@ int load_fonts(struct frame *f)
         /* TODO: Get fonts from command line options. */
 
         const char *path[] = {
-                "SourceCodePro-Regular.otf",
+                //"SourceCodePro-Regular.otf",
+                "DejaVuSansMono.ttf",
                 //"NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
         };
@@ -923,6 +925,21 @@ void tscrollup(struct frame *f, int orig, int n)
         }
 }
 
+void tnewline(struct frame *f, int first_col)
+{
+        dprintf("tnewline(%d)\n", first_col);
+
+        int y = f->c.y;
+
+        if (y == f->bot) {
+                tscrollup(f, f->top, 1);
+        } else {
+                y++;
+        }
+
+        tmoveto(f, first_col ? 0 : f->c.x, y);
+}
+
 void tcontrolcode(struct frame *f, uint32_t c)
 {
         dprintf("control code %"PRIX32"\n", c);
@@ -932,7 +949,7 @@ void tcontrolcode(struct frame *f, uint32_t c)
                 break;
         case LF:
         case VT:
-                tmoveto(f, f->c.x, f->c.y + 1);
+                tnewline(f, f->mode & MODE_CRLF);
                 break;
         case CR:
                 tmoveto(f, 0, f->c.y);
@@ -1059,7 +1076,7 @@ void csihandle(struct frame *f)
                 switch (f->csi.arg[0]) {
                 case 0: /* below */
                         tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
-                        if (f->c.y < f->row-1) {
+                        if (f->c.y < f->row - 1) {
                                 tclearregion(f, 0, f->c.y + 1, f->col - 1, f->row - 1);
                         }
                         break;
@@ -1146,15 +1163,6 @@ void tputc(struct frame *f, uint32_t c)
 
         /* TODO: ??? */
         if (f->c.x >= f->col) f->c.x = f->col - 1;
-
-        /*
-         * Scroll the entire screen when the cursor tries to write past the
-         * end.
-         */
-        if (f->c.y >= f->row) {
-                int diff = f->c.y - f->row + 1;
-                tscrollup(f, f->row - 1, diff);
-        }
 
         /* Here's the legwork of actually interpreting commands. */
 
@@ -1283,6 +1291,9 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 break;
         case GLFW_KEY_ESCAPE:
                 write(k->master, "\x1b", 1);
+                break;
+        case GLFW_KEY_TAB:
+                write(k->master, "\t", 1);
                 break;
         case GLFW_KEY_LEFT:
                 write(k->master, "\x1b[D", 3);
@@ -1417,6 +1428,14 @@ int main(int, char **, char **env)
         int width, height;
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
+
+        /*
+         * Right now these are being set after the resize callback because the
+         * resize callback is what sets `k->row`. TODO: Move the frame
+         * initialization stuff to a separate function.
+         */
+        k->top = 0;
+        k->bot = k->row - 1;
 
         /* Create the VBO, shader program, etc. */
         if (init_gl_resources(k)) return 1;
