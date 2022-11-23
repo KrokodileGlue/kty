@@ -35,6 +35,7 @@
 
 void dprintf(const char *func, const char *fmt, ...)
 {
+        (void)func;
         va_list args;
         va_start(args, fmt);
         struct tm *t = localtime(&(time_t){time(NULL)});
@@ -59,6 +60,31 @@ enum {
         DEL = 0x7F,
 };
 
+enum {
+        GLYPH_WRAP = 1,
+        GLYPH_UNDERLINE = 1 << 1,
+        GLYPH_BOLD = 1 << 2,
+        GLYPH_ITALIC = 1 << 3,
+        GLYPH_DIM = 1 << 4,
+        GLYPH_BLINKING = 1 << 5,
+        GLYPH_INVERSE = 1 << 5,
+        GLYPH_MAX = 1 << 7,
+};
+
+struct glyph {
+        uint32_t c;
+        int mode;
+};
+
+struct sprite {
+        uint32_t c;
+        struct font *font;
+        FT_Glyph_Metrics metrics;
+        int bitmap_top;
+        float tex_coords[4];
+        int height;
+};
+
 struct font {
         const char *path;         /* The path that this font was loaded from. */
         int is_color_font;
@@ -76,26 +102,11 @@ struct font {
         GLuint vbo_textures;
         int num_glyphs_in_vbo;
 
+        struct sprite glyph[NUM_GLYPH];
         int num_glyph;              /* The number of glyphs in the spritemap. */
 
         int pixel_size;
         int load_flags;
-};
-
-enum {
-        GLYPH_WRAP = 1,
-        GLYPH_UNDERLINE = 1 << 1,
-        GLYPH_BOLD = 1 << 2,
-        GLYPH_ITALIC = 1 << 3,
-        GLYPH_DIM = 1 << 4,
-        GLYPH_BLINKING = 1 << 5,
-        GLYPH_INVERSE = 1 << 5,
-        GLYPH_MAX = 1 << 7,
-};
-
-struct glyph {
-        uint32_t c;
-        int mode;
 };
 
 enum {
@@ -118,13 +129,7 @@ struct font_renderer {
         FT_Library ft;
 
         /* TODO: Use a hashtable for this. */
-        struct sprite {
-                uint32_t c;
-                struct font *font;
-                FT_Glyph_Metrics metrics;
-                int bitmap_top;
-                float tex_coords[4];
-        } glyph[NUM_GLYPH];
+        struct sprite glyph[NUM_GLYPH];
         int num_glyph;
 
         /* Fonts */
@@ -164,6 +169,7 @@ struct frame {
         GLint uniform_tex;
         GLint uniform_color;
         GLint uniform_is_solid;
+        GLint uniform_is_color;
 
         /* State */
         struct window w;
@@ -278,8 +284,17 @@ varying vec3 dec_color;\n\
 uniform sampler2D tex;\n\
 uniform vec4 color;\n\
 uniform int is_solid;\n\
+uniform int is_color;\n\
 void main(void) {\n\
-        gl_FragColor = is_solid == 1 ? vec4(dec_color, 1) : vec4(1, 1, 1, texture2D(tex, dec_color.xy).a) * color;\n\
+        if (is_solid == 1) {\n\
+                gl_FragColor = vec4(dec_color, 1);\n\
+        } else if (is_color == 1) {\n\
+                //gl_FragColor = vec4(1, 1, 0.5, 1);\n\
+                gl_FragColor = texture2D(tex, dec_color.xy);\n\
+                //gl_FragColor = vec4(dec_color.xy / 0.0625, 1, 1);\n\
+        } else {\n\
+                gl_FragColor = vec4(1, 1, 1, texture2D(tex, dec_color.xy).a) * color;\n\
+        }\n\
 }";
 
         /* Compile each shader. */
@@ -310,6 +325,7 @@ void main(void) {\n\
         f->uniform_tex = bind_uniform_to_program(f->program, "tex");
         f->uniform_color = bind_uniform_to_program(f->program, "color");
         f->uniform_is_solid = bind_uniform_to_program(f->program, "is_solid");
+        f->uniform_is_color = bind_uniform_to_program(f->program, "is_color");
 
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
@@ -364,52 +380,86 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         if (!font) return NULL;
 
         FT_GlyphSlot slot = font->face->glyph;
-        //printf("Adding sprite U+%x (%c) to font %s (%p)\n", c, c, font->path, slot->bitmap.buffer);
+        dprintf("Adding sprite U+%x (%c) to font %s (%p)\n", c, c, font->path, slot->bitmap.buffer);
 
         if (!slot->bitmap.buffer) {
-                f->font.glyph[f->font.num_glyph] = (struct sprite){
+                /*
+                 * TODO: This is a weird edge case that can probably be handled
+                 * more cleanly. Basically the buffer will be NULL when a
+                 * character like the common space (0x20) gets rendered by
+                 * FreeType. The obvious solution is just oh let's return NULL
+                 * because it doesn't need a sprite. That doesn't work because
+                 * we might need the character advance or whatever, so we have
+                 * to return SOMETHING. Also, new characters are allocated in
+                 * the bitmap based on where the previous character was placed,
+                 * so if we add a new sprite to this list with random texture
+                 * coordinates then the spritemap allocation will go haywire.
+                 * That's why we're returning a character with the same texture
+                 * coordinates as the previous character; they're not actually
+                 * used for rendering but they are used for spritemap
+                 * allocation.
+                 */
+                struct sprite s = font->glyph[font->num_glyph - 1];
+                font->glyph[font->num_glyph] = f->font.glyph[f->font.num_glyph] = (struct sprite){
                         .c = c,
                         .metrics = slot->metrics,
                         .bitmap_top = slot->bitmap_top,
-                        .tex_coords = { 0, 0, 0.5, 1 },
+                        .tex_coords = {s.tex_coords[0], s.tex_coords[1], s.tex_coords[2], s.tex_coords[3]},
                         .font = font,
+                        .height = 0,
                 };
                 font->num_glyph++;
 
                 return &f->font.glyph[f->font.num_glyph++];
         }
 
-        int cw = 10, ch = 10; /* TODO: Fix this haha. */
-        int sw = 2048 / cw;
-        int x = (font->num_glyph % sw) * cw;
-        int y = (font->num_glyph / sw) * ch;
+        /* TODO: Fix this haha. */
+        int cw = slot->bitmap.width, ch = slot->bitmap.rows;
+        int x = font->glyph[font->num_glyph - 1].tex_coords[2] * 2048 + 1;
+        int y = font->glyph[font->num_glyph - 1].tex_coords[1] * 2048;
 
-        //printf("-> %d,%d\n", x, y);
-        //printf("%d,%d,%d,%d\n", slot->bitmap.rows, slot->bitmap.width, ch, cw);
+        int m = 0;
+        for (int i = 0; i < font->num_glyph; i++)
+                m = font->glyph[i].height > m ? font->glyph[i].height : m;
+
+        dprintf("-> %d,%d\n", x, y);
+        dprintf("(%d,%d)\n", cw, ch);
+
+        if (font->is_color_font && x + cw * 4 >= 2048 * 4) {
+                x = 0;
+                y += m;
+        }
+        if (!font->is_color_font && x >= 2048) {
+                x = 0;
+                y += m;
+        }
 
         /* Write the sprite into the spritemap. */
-        for (unsigned i = 0; i < slot->bitmap.rows; i++)
-                memcpy(font->sprite_buffer + (y + i) * 2048 + x,
-                        slot->bitmap.buffer + (i * slot->bitmap.width),
-                        slot->bitmap.width);
+        for (unsigned i = 0; i < slot->bitmap.rows; i++) {
+                if (font->is_color_font) {
+                        memcpy(font->sprite_buffer + (y + i) * 2048 * 4 + x * 4,
+                                slot->bitmap.buffer + i * slot->bitmap.width  * 4,
+                                slot->bitmap.width * 4);
+                } else {
+                        memcpy(font->sprite_buffer + (y + i) * 2048 + x,
+                                slot->bitmap.buffer + i * slot->bitmap.width,
+                                slot->bitmap.width);
+                }
+        }
 
         float fx0 = (float)x / 2048.0;
         float fx1 = (float)(x + slot->bitmap.width) / 2048.0;
         float fy0 = (float)y / 2048.0;
         float fy1 = (float)(y + slot->bitmap.rows) / 2048.0;
 
-        f->font.glyph[f->font.num_glyph] = (struct sprite){
+        font->glyph[font->num_glyph] = f->font.glyph[f->font.num_glyph] = (struct sprite){
                 .c = c,
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
                 .tex_coords = { fx0, fy0, fx1, fy1 },
                 .font = font,
+                .height = ch,
         };
-
-        //printf("[%f, %f]\n", fx0, fy0);
-        //printf("[%f, %f]\n", fx1, fy0);
-        //printf("[%f, %f]\n", fx0, fy1);
-        //printf("[%f, %f]\n", fx1, fy1);
 
         font->spritemap_dirty = 1;
         font->num_glyph++;
@@ -439,6 +489,13 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         float y2 = -y - sprite->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
+
+        if (w > 2 * f->w.cw * sx) w = 2 * f->w.cw * sx;
+        if (h > f->w.ch * sy) {
+                y2 = -y - f->w.ch * sy;
+                h = (float)f->w.ch * sy + LINE_SPACING * sy;
+                w = 2 * (float)f->w.cw * sx + 0.5 * LINE_SPACING * sx;
+        }
 
         struct {
                 GLfloat x, y;
@@ -558,7 +615,7 @@ void render(struct frame *f)
         for (int i = 0; i < f->row; i++) {
                 for (int j = 0; j < f->col; j++) {
                         if (!f->line[i][j].c) continue;
-                        //printf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
+                        //dprintf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
                         render_glyph(f, f->line[i][j], j, i);
                 }
         }
@@ -609,22 +666,8 @@ void render(struct frame *f)
          * point.
          */
 
-        f->font.num_fonts = 1;
         for (int i = 0; i < f->font.num_fonts; i++) {
                 struct font *font = f->font.fonts + i;
-
-                glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
-                glUniform1i(f->uniform_tex, 0);
-                glUniform1i(f->uniform_is_solid, 0);
-
-                glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_vertices);
                 glEnableVertexAttribArray(f->attribute_coord);
@@ -658,19 +701,39 @@ void render(struct frame *f)
                         3 * sizeof(GLfloat),
                         0);
 
+                glActiveTexture(GL_TEXTURE0 + i);
+                glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
+                glUniform1i(f->uniform_tex, i);
+                glUniform1i(f->uniform_is_solid, 0);
+
                 if (font->spritemap_dirty) {
+                        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                                font->is_color_font ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
                         /* Upload the sprite map. */
+
                         glTexImage2D(GL_TEXTURE_2D,
                                 0,
-                                GL_ALPHA,
+                                font->is_color_font ? GL_RGBA8 : GL_ALPHA,
                                 2048,
                                 2048,
                                 0,
-                                GL_ALPHA,
+                                font->is_color_font ? GL_BGRA : GL_ALPHA,
                                 GL_UNSIGNED_BYTE,
                                 font->sprite_buffer);
+
+                        if (font->is_color_font) glGenerateMipmap(GL_TEXTURE_2D);
+
                         font->spritemap_dirty = 0;
                 }
+
+                glUniform1i(f->uniform_is_color, !!font->is_color_font);
 
                 glDrawArrays(GL_TRIANGLES, 0, font->num_glyphs_in_vbo * 6);
         }
@@ -703,7 +766,7 @@ int load_fonts(struct frame *f)
         const char *path[] = {
                 "SourceCodePro-Regular.otf",
                 //"DejaVuSansMono.ttf",
-                //"NotoColorEmoji.ttf",
+                "NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
         };
 
@@ -737,9 +800,10 @@ int load_fonts(struct frame *f)
                          */
                         f->w.cw = slot->metrics.horiAdvance / 64.0;
                         f->w.ch = slot->metrics.vertAdvance / 64.0;
-                        printf("%d,%d\n", f->w.cw, f->w.ch);
+                        dprintf("%d,%d\n", f->w.cw, f->w.ch);
                 }
 
+                dprintf("Loading font %s\n", path[i]);
                 f->font.fonts[f->font.num_fonts++] = (struct font){
                         .path = path[i],
                         .face = face,
@@ -752,7 +816,7 @@ int load_fonts(struct frame *f)
                          */
                         .vertices = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat)),
                         .textures = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
-                        .sprite_buffer = calloc(1, 2048 * 2048),
+                        .sprite_buffer = calloc(1, 2048 * 2048 * 4),
                 };
 
                 /* Get a free VBO number. */
@@ -838,7 +902,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        dprintf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        dprintf("tprintc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode,
