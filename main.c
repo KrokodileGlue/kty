@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <inttypes.h>
+#include <wchar.h>
 
 #include <unistd.h>
 #include <pthread.h> /* TODO: Windows support. */
@@ -1254,7 +1255,7 @@ void tputc(struct frame *f, uint32_t c)
                 }
         } else if (f->c.x < f->col) {
                 tprintc(f, c);
-                f->c.x++;
+                f->c.x += wcwidth(c);
         }
 }
 
