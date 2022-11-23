@@ -257,11 +257,15 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
 
-        if (w > 2 * f->w.cw * sx) w = 2 * f->w.cw * sx;
         if (h > f->w.ch * sy) {
+                float tmp = wcwidth(c) * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
+                float ratio = tmp / w;
+                w = tmp;
+                float tmp2 = h;
+                h *= ratio;
+                /* y2 = -y - f->w.ch * sy; */
                 y2 = -y - f->w.ch * sy;
-                h = (float)f->w.ch * sy + 0.5 * LINE_SPACING * sy;
-                w = 2 * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
+                y2 += f->w.ch * sy - h;
         }
 
         struct {
@@ -543,6 +547,8 @@ int load_fonts(struct frame *f)
                 //"DejaVuSansMono.ttf",
                 "NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
+                "TibMachUni-1.901b.ttf",
+                "DejaVuSansMono.ttf",
         };
 
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
@@ -696,10 +702,10 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 break;
         case GLFW_KEY_F1: {
                 FILE *f = fopen("bitmap.ppm", "w");
-                fprintf(f, "P3\n500 10\n255\n");
+                fprintf(f, "P3\n700 12\n255\n");
                 unsigned char *b = k->font.fonts[0].sprite_buffer;
-                for (int y = 0; y < 10; y++) {
-                        for (int x = 0; x < 500; x++)
+                for (int y = 0; y < 12; y++) {
+                        for (int x = 0; x < 700; x++)
                                 fprintf(f, "%u %u %u ",
                                         (unsigned)b[y * 2048 + x],
                                         (unsigned)b[y * 2048 + x],
