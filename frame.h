@@ -164,4 +164,8 @@ struct frame {
         int dirty_display;
 };
 
+struct color {
+        GLfloat r, g, b;
+};
+
 #endif

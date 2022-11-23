@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <inttypes.h>
+#include <wchar.h>
 
 #include <unistd.h>
 #include <pthread.h> /* TODO: Windows support. */
@@ -237,6 +238,28 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         return &f->font.glyph[f->font.num_glyph++];
 }
 
+void render_rectangle(struct frame *f, float n, float s, float w, float e, struct color color)
+{
+        struct {
+                GLfloat x, y;
+        } box[6] = {
+                { w, n },
+                { e, n },
+                { w, s },
+                { e, s },
+                { e, n },
+                { w, s },
+        };
+
+        struct color col[] = { color, color, color, color, color, color };
+
+        memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
+               box, sizeof box);
+        memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
+               col, sizeof col);
+        f->font.num_decoration++;
+}
+
 int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 {
         uint32_t c = g.c;
@@ -264,9 +287,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 float tmp = wcwidth(c) * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
                 float ratio = tmp / w;
                 w = tmp;
-                float tmp2 = h;
                 h *= ratio;
-                /* y2 = -y - f->w.ch * sy; */
                 y2 = -y - f->w.ch * sy;
                 y2 += f->w.ch * sy - h;
         }
@@ -295,10 +316,6 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
         };
 
-        struct color {
-                GLfloat r, g, b;
-        };
-
         struct color fg = (struct color){ 1, 1, 1 };
 
         if (g.fg >= 30) {
@@ -324,74 +341,31 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         memcpy(font->colors + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
         font->num_glyphs_in_vbo++;
 
-        if (g.mode & GLYPH_UNDERLINE) {
-                float w = x;
-                float s = y - 3 * sy;
-                float n = s + 1 * sy;
-                float e = x + f->w.cw * sx;
+        if (g.mode & GLYPH_UNDERLINE)
+                render_rectangle(f,
+                                 y - 3 * sy + 1 * sy,
+                                 y - 3 * sy,
+                                 x,
+                                 x + f->w.cw * sx,
+                                 (struct color){1, 1, 1});
 
-                struct {
-                        GLfloat x, y;
-                } box[6] = {
-                        { w, n },
-                        { e, n },
-                        { w, s },
-                        { e, s },
-                        { e, n },
-                        { w, s },
-                };
-
-                struct color {
-                        GLfloat r, g, b;
-                };
-
-                struct color fg = (struct color){1, 1, 1};
-                struct color col[] = { fg, fg, fg, fg, fg, fg };
-
-                memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
-                        box, sizeof box);
-                memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
-                        col, sizeof col);
-                f->font.num_decoration++;
-        }
-
-        if (g.bg >= 40) {
-                float w = x;
-                float s = y - LINE_SPACING * sy;
-                float n = y + f->w.ch * sy;
-                float e = x + f->w.cw * sx;
-
-                struct {
-                        GLfloat x, y;
-                } box[6] = {
-                        { w, n },
-                        { e, n },
-                        { w, s },
-                        { e, s },
-                        { e, n },
-                        { w, s },
-                };
-
-                struct color bg = (struct color []){
-                        { 0, 0, 0 },
-                        { 1, 0, 0 },
-                        { 0, 1, 0 },
-                        { 1, 1, 0 },
-                        { 0, 0, 1 },
-                        { 1, 0, 1 },
-                        { 0, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                }[g.bg - 40];
-
-                struct color col[] = { bg, bg, bg, bg, bg, bg };
-
-                memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
-                        box, sizeof box);
-                memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
-                        col, sizeof col);
-                f->font.num_decoration++;
-        }
+        if (g.bg >= 40)
+                render_rectangle(f,
+                                 y + f->w.ch * sy,
+                                 y - LINE_SPACING * sy,
+                                 x + f->w.cw * sx,
+                                 x,
+                                 (struct color []){
+                                         { 0, 0, 0 },
+                                         { 1, 0, 0 },
+                                         { 0, 1, 0 },
+                                         { 1, 1, 0 },
+                                         { 0, 0, 1 },
+                                         { 1, 0, 1 },
+                                         { 0, 1, 1 },
+                                         { 0.5, 0.5, 0.5 },
+                                         { 0.5, 0.5, 0.5 },
+                                 }[g.bg - 40]);
 
         return 0;
 }
@@ -405,43 +379,14 @@ void render_cursor(struct frame *f)
 
         float w = -1 + (f->w.cw * x) * sx;
         float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy;
-
-        float s = n - f->w.ch * sy;
+        float s = n - f->w.ch * sy - LINE_SPACING * sy;
         float e = w + f->w.cw * sx;
 
         /* Thicken the cursor. */
         if (f->line[y][x].mode & GLYPH_WIDE)
                 e += f->w.cw * sx;
 
-        s -= LINE_SPACING * sy;
-
-        struct {
-                GLfloat x, y;
-        } box[6] = {
-                { w, n },
-                { e, n },
-                { w, s },
-                { e, s },
-                { e, n },
-                { w, s },
-        };
-
-        struct {
-                GLfloat r, g, b;
-        } col[6] = {
-                { 0, 0.5, 0.5 },
-                { 0, 0.5, 0.5 },
-                { 0, 0.5, 0.5 },
-                { 0, 0.5, 0.5 },
-                { 0, 0.5, 0.5 },
-                { 0, 0.5, 0.5 },
-        };
-
-        memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
-                box, sizeof box);
-        memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
-                col, sizeof col);
-        f->font.num_decoration++;
+        render_rectangle(f, n, s, w, e, (struct color){ 0, 0.5, 0.5});
 }
 
 void render(struct frame *f)
@@ -460,13 +405,10 @@ void render(struct frame *f)
                 if (f->mode & MODE_CURSOR_VISIBLE)
                         render_cursor(f);
 
-                for (int i = 0; i < f->row; i++) {
-                        for (int j = 0; j < f->col; j++) {
-                                if (!f->line[i][j].c) continue;
-                                //_printf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
-                                render_glyph(f, f->line[i][j], j, i);
-                        }
-                }
+                for (int i = 0; i < f->row; i++)
+                        for (int j = 0; j < f->col; j++)
+                                if (f->line[i][j].c)
+                                        render_glyph(f, f->line[i][j], j, i);
         }
 
         /* Render the quads. */
@@ -783,7 +725,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         case GLFW_KEY_F1: {
                 FILE *f = fopen("bitmap.ppm", "w");
                 fprintf(f, "P3\n700 12\n255\n");
-                unsigned char *b = k->font.fonts[0].sprite_buffer;
+                unsigned char *b = (unsigned char *)k->font.fonts[0].sprite_buffer;
                 for (int y = 0; y < 12; y++) {
                         for (int x = 0; x < 700; x++)
                                 fprintf(f, "%u %u %u ",
