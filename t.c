@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdint.h>
+#include <inttypes.h>
 #include <wchar.h>
 
 /* TODO: Remove OpenGL specific stuff from the frame. */
@@ -168,7 +169,6 @@ void tcontrolcode(struct frame *f, uint32_t c)
                 break;
         case BS:
                 tmoveto(f, f->c.x - 1, f->c.y);
-                tprintc(f, ' ');
                 break;
         }
 }
