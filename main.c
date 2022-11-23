@@ -95,7 +95,11 @@ void dprintf(const char *func, const char *fmt, ...)
         va_end(args);
 }
 
+#ifdef DEBUG
 #define dprintf(...) dprintf(__func__, __VA_ARGS__)
+#else
+#define dprintf(...) do {} while (0)
+#endif
 
 enum {
         BEL = 0x07,
@@ -1124,11 +1128,10 @@ void csiparse(struct frame *f)
 	f->csi.mode[0] = *p++;
 	f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
 
-        printf("(%.*s) -> ESC '[' [[ [<priv:%d>] ", f->csi.len, f->csi.buf, f->csi.priv);
+        dprintf("(%.*s) -> ESC '[' [[ [<priv:%d>] ", f->csi.len, f->csi.buf, f->csi.priv);
         for (int i = 0; i < f->csi.narg; i++)
-                printf("<arg:%ld> [;]", f->csi.arg[i]);
-        printf("] <mode:%d:%c> [<mode:%d>]]", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
-        puts("");
+                dprintf("<arg:%ld> [;]", f->csi.arg[i]);
+        dprintf("] <mode:%d:%c> [<mode:%d>]]\n", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
 }
 
 void get_csi_graphic_mode(long arg, int *mode)
