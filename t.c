@@ -50,7 +50,7 @@ void tprintc(struct frame *f, uint32_t c)
         f->dirty_display = 1;
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
-                .mode = f->c.mode,
+                .mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0),
         };
 }
 

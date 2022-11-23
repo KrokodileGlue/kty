@@ -27,6 +27,7 @@ enum {
         GLYPH_DIM = 1 << 4,
         GLYPH_BLINKING = 1 << 5,
         GLYPH_INVERSE = 1 << 5,
+        GLYPH_WIDE = 1 << 6,
         GLYPH_MAX = 1 << 7,
 };
 

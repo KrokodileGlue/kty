@@ -325,14 +325,20 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 
 void render_cursor(struct frame *f)
 {
+        int x = f->c.x, y = f->c.y;
+
         float sx = 2.0 / (float)f->w.width;
         float sy = 2.0 / (float)f->w.height;
 
-        float w = -1 + (f->w.cw * f->c.x) * sx;
-        float n = 1 - (f->w.ch * f->c.y) * sy - LINE_SPACING * f->c.y * sy;
+        float w = -1 + (f->w.cw * x) * sx;
+        float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy;
 
         float s = n - f->w.ch * sy;
         float e = w + f->w.cw * sx;
+
+        /* Thicken the cursor. */
+        if (f->line[y][x].mode & GLYPH_WIDE)
+                e += f->w.cw * sx;
 
         s -= LINE_SPACING * sy;
 
