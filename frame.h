@@ -59,8 +59,10 @@ struct font {
 
         char *vertices;
         char *textures;
+        char *colors;
         GLuint vbo_vertices;
         GLuint vbo_textures;
+        GLuint vbo_colors;
         int num_glyphs_in_vbo;
 
         struct sprite glyph[NUM_GLYPH];
@@ -128,8 +130,8 @@ struct frame {
 
         GLint attribute_coord;
         GLint attribute_decoration_color;
+        GLint attribute_color;
         GLint uniform_tex;
-        GLint uniform_color;
         GLint uniform_is_solid;
         GLint uniform_is_color;
 

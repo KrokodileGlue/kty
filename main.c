@@ -32,16 +32,19 @@ int init_gl_resources(struct frame *f)
         const char vs[] = "#version 120\n\
 attribute vec2 coord;\n\
 attribute vec3 decoration_color;\n\
+attribute vec3 tex_color;\n\
 varying vec3 dec_color;\n\
+varying vec3 tcolor;\n\
 void main(void) {\n\
         gl_Position = vec4(coord.xy, 0, 1);\n\
         dec_color = decoration_color;\n\
+	tcolor = tex_color;\n\
 }";
 
         const char fs[] = "#version 120\n\
 varying vec3 dec_color;\n\
+varying vec3 tcolor;\n\
 uniform sampler2D tex;\n\
-uniform vec4 color;\n\
 uniform int is_solid;\n\
 uniform int is_color;\n\
 void main(void) {\n\
@@ -52,7 +55,7 @@ void main(void) {\n\
                 gl_FragColor = texture2D(tex, dec_color.xy);\n\
                 //gl_FragColor = vec4(dec_color.xy / 0.0625, 1, 1);\n\
         } else {\n\
-                gl_FragColor = vec4(1, 1, 1, texture2D(tex, dec_color.xy).a) * color;\n\
+                gl_FragColor = vec4(tcolor, texture2D(tex, dec_color.xy).a);\n\
         }\n\
 }";
 
@@ -81,15 +84,15 @@ void main(void) {\n\
 
         f->attribute_coord = bind_attribute_to_program(f->program, "coord");
         f->attribute_decoration_color = bind_attribute_to_program(f->program, "decoration_color");
+        f->attribute_color = bind_attribute_to_program(f->program, "tex_color");
+
         f->uniform_tex = bind_uniform_to_program(f->program, "tex");
-        f->uniform_color = bind_uniform_to_program(f->program, "color");
         f->uniform_is_solid = bind_uniform_to_program(f->program, "is_solid");
         f->uniform_is_color = bind_uniform_to_program(f->program, "is_color");
 
         /* Enabling blending allows us to use alpha textures. */
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glUniform4fv(f->uniform_color, 1, (GLfloat []){ 1, 1, 1, 1 });
 
         return 0;
 }
@@ -282,7 +285,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 
         struct {
                 GLfloat s, t, v;
-        } col[6] = {
+        } tex[6] = {
                 { sprite->tex_coords[0], sprite->tex_coords[1], 0 },
                 { sprite->tex_coords[2], sprite->tex_coords[1], 0 },
                 { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
@@ -292,10 +295,33 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
         };
 
+        struct color {
+                GLfloat r, g, b;
+        };
+
+        struct color fg = (struct color){ 1, 1, 1 };
+
+        if (g.fg >= 30) {
+                fg = (struct color []){
+                        { 0, 0, 0 },
+                        { 1, 0, 0 },
+                        { 0, 1, 0 },
+                        { 1, 1, 0 },
+                        { 0, 0, 1 },
+                        { 1, 0, 1 },
+                        { 0, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                }[g.fg - 30];
+        }
+
+        struct color col[] = { fg, fg, fg, fg, fg, fg };
+
         struct font *font = sprite->font;
 
         memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
-        memcpy(font->textures + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
+        memcpy(font->textures + font->num_glyphs_in_vbo * sizeof tex, tex, sizeof tex);
+        memcpy(font->colors + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
         font->num_glyphs_in_vbo++;
 
         if (g.mode & GLYPH_UNDERLINE) {
@@ -482,6 +508,22 @@ void render(struct frame *f)
                         3 * sizeof(GLfloat),
                         0);
 
+                glBindBuffer(GL_ARRAY_BUFFER, font->vbo_colors);
+                glEnableVertexAttribArray(f->attribute_color);
+
+                if (f->dirty_display)
+                        glBufferData(GL_ARRAY_BUFFER,
+                                     font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
+                                     font->colors,
+                                     GL_DYNAMIC_DRAW);
+
+                glVertexAttribPointer(f->attribute_color,
+                        3,
+                        GL_FLOAT,
+                        GL_FALSE,
+                        3 * sizeof(GLfloat),
+                        0);
+
                 glActiveTexture(GL_TEXTURE0 + i);
                 glBindTexture(GL_TEXTURE_2D, font->sprite_texture);
                 glUniform1i(f->uniform_tex, i);
@@ -594,12 +636,15 @@ int load_fonts(struct frame *f)
                          */
                         .vertices = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat)),
                         .textures = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
+                        .colors = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
                         .sprite_buffer = calloc(1, 2048 * 2048 * 4),
                 };
 
                 /* Get a free VBO number. */
                 glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo_vertices);
                 glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo_textures);
+                glGenBuffers(1, &f->font.fonts[f->font.num_fonts - 1].vbo_colors);
+
                 glGenTextures(1, &f->font.fonts[f->font.num_fonts - 1].sprite_texture);
         }
 
