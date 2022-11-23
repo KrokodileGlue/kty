@@ -104,14 +104,14 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         int load_flags = FT_LOAD_COLOR;
 
         for (int i = 0; i < f->font.num_fonts; i++) {
-                font = f->font.fonts + i;
-                FT_Face face = font->face;
+                struct font *fo = f->font.fonts + i;
+                FT_Face face = fo->face;
                 FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
                 uint32_t glyph_index = FT_Get_Char_Index(face, c);
                 if (!glyph_index) continue;
 
-                if (font->is_color_font) {
+                if (fo->is_color_font) {
                         if (!face->num_fixed_sizes) return NULL;
 
                         int best_match = 0;
@@ -128,20 +128,28 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
                         FT_Select_Size(face, best_match);
 
                         if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
-                        if (FT_Render_Glyph(face->glyph, font->render_mode)) continue;
+                        if (FT_Render_Glyph(face->glyph, fo->render_mode)) continue;
                 } else {
                         if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
                 }
 
+                font = fo;
                 break;
         }
 
-        if (!font) return NULL;
+        if (!font && c != 0x25a1) return get_sprite(f, 0x25a1);
 
         FT_GlyphSlot slot = font->face->glyph;
-        _printf("Adding sprite U+%x (%c) to font %s (%p)\n", c, c, font->path, slot->bitmap.buffer);
+
+#ifdef DEBUG
+        unsigned char buf[5] = { 0 };
+        utf8encode(c, buf, &(unsigned){0});
+        _printf("Adding sprite U+%x (%s) to font %s\n", c, buf, font->path);
+#endif
 
         if (!slot->bitmap.buffer) {
+                _printf("-> null buffer\n");
+
                 /*
                  * TODO: This is a weird edge case that can probably be handled
                  * more cleanly. Basically the buffer will be NULL when a
@@ -686,6 +694,20 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         case GLFW_KEY_DOWN:
                 write(k->master, "\x1b[B", 3);
                 break;
+        case GLFW_KEY_F1: {
+                FILE *f = fopen("bitmap.ppm", "w");
+                fprintf(f, "P3\n500 10\n255\n");
+                unsigned char *b = k->font.fonts[0].sprite_buffer;
+                for (int y = 0; y < 10; y++) {
+                        for (int x = 0; x < 500; x++)
+                                fprintf(f, "%u %u %u ",
+                                        (unsigned)b[y * 2048 + x],
+                                        (unsigned)b[y * 2048 + x],
+                                        (unsigned)b[y * 2048 + x]);
+                        fprintf(f, "\n");
+                }
+                fclose(f);
+        } break;
         }
 }
 
