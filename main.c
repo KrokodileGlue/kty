@@ -241,6 +241,12 @@ struct frame {
 
         int mode;
         int esc;
+
+        /*
+         * This could mean new characters to display or a change in
+         * the position/display of the cursor.
+         */
+        int dirty_display;
 };
 
 int print_gl_error_log(GLuint object)
@@ -581,7 +587,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 float s = y - 3 * sy;
                 float n = s + 1 * sy;
                 float e = x + f->w.cw * sx;
-                struct { 
+                struct {
                         GLfloat x, y;
                 } box[6] = {
                         { w, n },
@@ -657,21 +663,28 @@ void render_cursor(struct frame *f)
 
 void render(struct frame *f)
 {
-        for (int i = 0; i < f->font.num_fonts; i++)
-                f->font.fonts[i].num_glyphs_in_vbo = 0;
-        f->font.num_decoration = 0;
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-        for (int i = 0; i < f->row; i++) {
-                for (int j = 0; j < f->col; j++) {
-                        if (!f->line[i][j].c) continue;
-                        //dprintf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
-                        render_glyph(f, f->line[i][j], j, i);
+        if (f->dirty_display) {
+                /* Reset the VBO render state. */
+                for (int i = 0; i < f->font.num_fonts; i++)
+                        f->font.fonts[i].num_glyphs_in_vbo = 0;
+
+                f->font.num_decoration = 0;
+
+                /* Add the cursor to the decoration VBO. */
+                if (f->mode & MODE_CURSOR_VISIBLE)
+                        render_cursor(f);
+
+                for (int i = 0; i < f->row; i++) {
+                        for (int j = 0; j < f->col; j++) {
+                                if (!f->line[i][j].c) continue;
+                                //dprintf("U+%x at %d,%d\n", f->line[i][j].c, j, i);
+                                render_glyph(f, f->line[i][j], j, i);
+                        }
                 }
         }
-
-        /* Add the cursor to the decoration VBO. */
-        if (f->mode & MODE_CURSOR_VISIBLE)
-                render_cursor(f);
 
         /* Render the quads. */
         glUniform1i(f->uniform_is_solid, 1);
@@ -679,11 +692,11 @@ void render(struct frame *f)
         glBindBuffer(GL_ARRAY_BUFFER, f->font.vbo_decoration);
         glEnableVertexAttribArray(f->attribute_coord);
 
-        /* Upload the VBO. */
-        glBufferData(GL_ARRAY_BUFFER,
-                f->font.num_decoration * 6 * 2 * sizeof(GLfloat),
-                f->font.decoration,
-                GL_DYNAMIC_DRAW);
+        if (f->dirty_display)
+                glBufferData(GL_ARRAY_BUFFER,
+                             f->font.num_decoration * 6 * 2 * sizeof(GLfloat),
+                             f->font.decoration,
+                             GL_DYNAMIC_DRAW);
 
         glVertexAttribPointer(f->attribute_coord,
                 2,
@@ -695,11 +708,11 @@ void render(struct frame *f)
         glBindBuffer(GL_ARRAY_BUFFER, f->font.vbo_decoration_color);
         glEnableVertexAttribArray(f->attribute_decoration_color);
 
-        /* Upload the VBO. */
-        glBufferData(GL_ARRAY_BUFFER,
-                f->font.num_decoration * 6 * 3 * sizeof(GLfloat),
-                f->font.decoration_color,
-                GL_DYNAMIC_DRAW);
+        if (f->dirty_display)
+                glBufferData(GL_ARRAY_BUFFER,
+                             f->font.num_decoration * 6 * 3 * sizeof(GLfloat),
+                             f->font.decoration_color,
+                             GL_DYNAMIC_DRAW);
 
         glVertexAttribPointer(f->attribute_decoration_color,
                 3,
@@ -721,11 +734,11 @@ void render(struct frame *f)
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_vertices);
                 glEnableVertexAttribArray(f->attribute_coord);
 
-                /* Upload the VBO. */
-                glBufferData(GL_ARRAY_BUFFER,
-                        font->num_glyphs_in_vbo * 6 * 2 * sizeof(GLfloat),
-                        font->vertices,
-                        GL_DYNAMIC_DRAW);
+                if (f->dirty_display)
+                        glBufferData(GL_ARRAY_BUFFER,
+                                     font->num_glyphs_in_vbo * 6 * 2 * sizeof(GLfloat),
+                                     font->vertices,
+                                     GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(f->attribute_coord,
                         2,
@@ -737,11 +750,11 @@ void render(struct frame *f)
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_textures);
                 glEnableVertexAttribArray(f->attribute_decoration_color);
 
-                /* Upload the VBO. */
-                glBufferData(GL_ARRAY_BUFFER,
-                        font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
-                        font->textures,
-                        GL_DYNAMIC_DRAW);
+                if (f->dirty_display)
+                        glBufferData(GL_ARRAY_BUFFER,
+                                     font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
+                                     font->textures,
+                                     GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(f->attribute_decoration_color,
                         3,
@@ -786,13 +799,8 @@ void render(struct frame *f)
 
                 glDrawArrays(GL_TRIANGLES, 0, font->num_glyphs_in_vbo * 6);
         }
-}
 
-void display(struct frame *f)
-{
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        render(f);
+        f->dirty_display = 0;
 }
 
 void free_resources(struct frame *f)
@@ -947,11 +955,13 @@ void tresize(struct frame *f, int col, int row)
 
         f->col = col;
         f->row = row;
+        f->dirty_display = 1;
 }
 
 void tprintc(struct frame *f, uint32_t c)
 {
         dprintf("tprintc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        f->dirty_display = 1;
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode,
@@ -965,6 +975,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
         for (int i = y0; i <= y1; i++)
                 for (int j = x0; j <= x1; j++)
                         f->line[i][j] = (struct glyph){ 0, 0 };
+        f->dirty_display = 1;
 }
 
 int limit(int *x, int y, int z)
@@ -991,6 +1002,7 @@ void tmoveto(struct frame *f, int x, int y)
 	f->c.state &= ~CURSOR_WRAPNEXT;
 	f->c.x = limit(&x, 0, f->col - 1);
 	f->c.y = limit(&y, miny, maxy);
+        f->dirty_display = 1;
 }
 
 void tmoveato(struct frame *f, int x, int y)
@@ -1023,6 +1035,8 @@ void tscrolldown(struct frame *f, int orig, int n)
                 f->line[i] = f->line[i - n];
                 f->line[i - n] = temp;
         }
+
+        f->dirty_display = 1;
 }
 
 void tscrollup(struct frame *f, int orig, int n)
@@ -1036,6 +1050,8 @@ void tscrollup(struct frame *f, int orig, int n)
                 f->line[i] = f->line[i + n];
                 f->line[i + n] = tmp;
         }
+
+        f->dirty_display = 1;
 }
 
 void tnewline(struct frame *f, int first_col)
@@ -1429,7 +1445,7 @@ void window_size_callback(GLFWwindow *window, int width, int height)
          * TODO: Obviously to support multiple frames in a single window this
          * will need to be generalized so that it updates all of the frames.
          * That's a relatively complex tiling window manager type of operation,
-         * so for now I'll just assume one frame. 
+         * so for now I'll just assume one frame.
          */
 
         (void)window;
@@ -1571,11 +1587,11 @@ int main(int, char **, char **env)
         pthread_t shell_reader;
         pthread_create(&shell_reader, NULL, read_shell, k);
 
-        display(k);
+        render(k);
         glfwSwapBuffers(window);
 
         while (!glfwWindowShouldClose(window) && !k->shell_done) {
-                display(k);
+                render(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
