@@ -494,8 +494,8 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         if (w > 2 * f->w.cw * sx) w = 2 * f->w.cw * sx;
         if (h > f->w.ch * sy) {
                 y2 = -y - f->w.ch * sy;
-                h = (float)f->w.ch * sy + LINE_SPACING * sy;
-                w = 2 * (float)f->w.cw * sx + 0.5 * LINE_SPACING * sx;
+                h = (float)f->w.ch * sy + 0.5 * LINE_SPACING * sy;
+                w = 2 * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
         }
 
         struct {
