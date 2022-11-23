@@ -173,6 +173,22 @@ void tcontrolcode(struct frame *f, uint32_t c)
         }
 }
 
+void tdeletechar(struct frame *f, int n)
+{
+	int dst, src, size;
+	struct glyph *line;
+
+	limit(&n, 0, f->col - f->c.x);
+
+	dst = f->c.x;
+	src = f->c.x + n;
+	size = f->col - src;
+	line = f->line[f->c.y];
+
+	memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+	tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
+}
+
 void tputc(struct frame *f, uint32_t c)
 {
         //_printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);

@@ -13,5 +13,6 @@ void tmoveto(struct frame *f, int x, int y);
 void tclearregion(struct frame *f, int x0, int y0, int x1, int y1);
 void tprintc(struct frame *f, uint32_t c);
 void tresize(struct frame *f, int col, int row);
+void tdeletechar(struct frame *f, int n);
 
 #endif
