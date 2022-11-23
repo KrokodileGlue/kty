@@ -283,13 +283,21 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         float w = metrics.width * 1.0/64.0 * sx;
         float h = metrics.height * 1.0/64.0 * sy;
 
-        if (h > f->w.ch * sy) {
+        /*
+         * The `+ 1 * sy` term allows one pixel of leeway when we're
+         * resizing big characters. Theoretically with a proper
+         * monospace font there shouldn't be any characters taller
+         * than the advance width, but Deja Vu Sans Mono's j character
+         * is taller than the vertical advance width.
+         */
+        if (h > f->w.ch * sy + 1 * sy) {
                 float tmp = wcwidth(c) * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
                 float ratio = tmp / w;
                 w = tmp;
                 h *= ratio;
                 y2 = -y - f->w.ch * sy;
-                y2 += f->w.ch * sy - h;
+                if (f->w.ch * sy - h > 0)
+                        y2 += f->w.ch * sy - h;
         }
 
         struct {
@@ -562,12 +570,12 @@ int load_fonts(struct frame *f)
         /* TODO: Get fonts from command line options. */
 
         const char *path[] = {
-                "SourceCodePro-Regular.otf",
-                //"DejaVuSansMono.ttf",
+                //"SourceCodePro-Regular.otf",
+                "DejaVuSansMono.ttf",
                 "NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
                 "TibMachUni-1.901b.ttf",
-                "DejaVuSansMono.ttf",
+                //"DejaVuSansMono.ttf",
         };
 
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
