@@ -355,6 +355,44 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 f->font.num_decoration++;
         }
 
+        if (g.bg >= 40) {
+                float w = x;
+                float s = y - LINE_SPACING * sy;
+                float n = y + f->w.ch * sy;
+                float e = x + f->w.cw * sx;
+
+                struct {
+                        GLfloat x, y;
+                } box[6] = {
+                        { w, n },
+                        { e, n },
+                        { w, s },
+                        { e, s },
+                        { e, n },
+                        { w, s },
+                };
+
+                struct color bg = (struct color []){
+                        { 0, 0, 0 },
+                        { 1, 0, 0 },
+                        { 0, 1, 0 },
+                        { 1, 1, 0 },
+                        { 0, 0, 1 },
+                        { 1, 0, 1 },
+                        { 0, 1, 1 },
+                        { 1, 1, 1 },
+                        { 1, 1, 1 },
+                }[g.bg - 40];
+
+                struct color col[] = { bg, bg, bg, bg, bg, bg };
+
+                memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
+                        box, sizeof box);
+                memcpy(f->font.decoration_color + f->font.num_decoration * sizeof col,
+                        col, sizeof col);
+                f->font.num_decoration++;
+        }
+
         return 0;
 }
 
