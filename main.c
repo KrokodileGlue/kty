@@ -705,6 +705,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         switch (key) {
         case GLFW_KEY_ENTER:
+                if (action != GLFW_PRESS) break;
                 write(k->master, "\n", 1);
                 break;
         case GLFW_KEY_BACKSPACE:
