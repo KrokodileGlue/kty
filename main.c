@@ -303,6 +303,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 float s = y - 3 * sy;
                 float n = s + 1 * sy;
                 float e = x + f->w.cw * sx;
+
                 struct {
                         GLfloat x, y;
                 } box[6] = {
@@ -314,16 +315,12 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                         { w, s },
                 };
 
-                struct {
+                struct color {
                         GLfloat r, g, b;
-                } col[6] = {
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
                 };
+
+                struct color fg = (struct color){1, 1, 1};
+                struct color col[] = { fg, fg, fg, fg, fg, fg };
 
                 memcpy(f->font.decoration + f->font.num_decoration * sizeof box,
                         box, sizeof box);

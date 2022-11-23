@@ -34,6 +34,7 @@ enum {
 struct glyph {
         uint32_t c;
         int mode;
+        int fg, bg;
 };
 
 struct sprite {
@@ -77,6 +78,7 @@ enum {
 
 struct cursor {
         int x, y, mode, state;
+        int fg, bg;
 };
 
 struct window {

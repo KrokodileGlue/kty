@@ -44,10 +44,25 @@ void csiparse(struct frame *f)
         _printf("] <mode:%d:%c> [<mode:%d>]]\n", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
 }
 
-void get_csi_graphic_mode(long arg, int *mode)
+void get_csi_graphic_mode(struct frame *f, long arg, int *mode)
 {
+        /*
+         * First let's just handle the colors since they're very
+         * repetitive.
+         */
+
+        if (arg >= 30 && arg <= 39) { /* 8-16 color */
+                f->c.fg = arg;
+                return;
+        } else if (arg >= 40 && arg <= 49) {
+                f->c.bg = arg;
+                return;
+        }
+
         switch (arg) {
         case 0:
+                f->c.fg = -1;
+                f->c.bg = -1;
                 *mode = 0;
                 break;
         case 1: /* Bold */
@@ -151,10 +166,10 @@ void csihandle(struct frame *f)
                 break;
         case 'm':
                 if (!f->csi.narg) {
-                        get_csi_graphic_mode(0, &f->c.mode);
+                        get_csi_graphic_mode(f, 0, &f->c.mode);
                 } else {
                         for (int i = 0; i < f->csi.narg; i++)
-                                get_csi_graphic_mode(f->csi.arg[i], &f->c.mode);
+                                get_csi_graphic_mode(f, f->csi.arg[i], &f->c.mode);
                 }
                 break;
         case 'M': /* DL - Delete n lines */

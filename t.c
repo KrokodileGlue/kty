@@ -51,6 +51,8 @@ void tprintc(struct frame *f, uint32_t c)
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0),
+                .fg = f->c.fg,
+                .bg = f->c.bg,
         };
 }
 
@@ -60,7 +62,12 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 
         for (int i = y0; i <= y1; i++)
                 for (int j = x0; j <= x1; j++)
-                        f->line[i][j] = (struct glyph){ 0, 0 };
+                        f->line[i][j] = (struct glyph){
+                                .c = 0,
+                                .mode = 0,
+                                .fg = -1,
+                                .bg = -1,
+                        };
         f->dirty_display = 1;
 }
 
