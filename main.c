@@ -324,6 +324,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                 { sprite->tex_coords[0], sprite->tex_coords[3], 0 },
         };
 
+        /* TODO: Make default fg and other colors configurable. */
         struct color fg = (struct color){ 1, 1, 1 };
 
         if (g.fg >= 30) {
@@ -570,12 +571,11 @@ int load_fonts(struct frame *f)
         /* TODO: Get fonts from command line options. */
 
         const char *path[] = {
-                //"SourceCodePro-Regular.otf",
-                "DejaVuSansMono.ttf",
+                "SourceCodePro-Regular.otf",
                 "NotoColorEmoji.ttf",
                 "NotoSansCJK-Regular.ttc",
                 "TibMachUni-1.901b.ttf",
-                //"DejaVuSansMono.ttf",
+                "DejaVuSansMono.ttf",
         };
 
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
@@ -692,8 +692,6 @@ void character_callback(GLFWwindow *window, uint32_t c)
 void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
 {
         (void)window, (void)mods, (void)scancode;
-
-        if (action != GLFW_PRESS) return;
 
         /*
          * The GLFW keycode things are hardcoded

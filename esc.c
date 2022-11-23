@@ -40,8 +40,8 @@ void csiparse(struct frame *f)
 
         _printf("(%.*s) -> ESC '[' [[ [<priv:%d>] ", f->csi.len, f->csi.buf, f->csi.priv);
         for (int i = 0; i < f->csi.narg; i++)
-                _printf("<arg:%ld> [;]", f->csi.arg[i]);
-        _printf("] <mode:%d:%c> [<mode:%d>]]\n", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
+                fprintf(stderr, "<arg:%ld> [;]", f->csi.arg[i]);
+        fprintf(stderr, "] <mode:%d:%c> [<mode:%d>]]\n", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
 }
 
 void get_csi_graphic_mode(struct frame *f, long arg, int *mode)
