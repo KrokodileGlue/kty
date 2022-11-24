@@ -116,6 +116,7 @@ enum {
 enum {
         MODE_CURSOR_VISIBLE = 1,
         MODE_CRLF = 1 << 1,
+        MODE_APPCURSOR = 1 << 2,
 };
 
 struct frame {

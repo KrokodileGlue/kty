@@ -693,6 +693,8 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 {
         (void)window, (void)mods, (void)scancode;
 
+        if (action == GLFW_RELEASE) return;
+
         /*
          * The GLFW keycode things are hardcoded
          * (https://www.glfw.org/docs/3.3/group__keys.html), so it's safe to
@@ -702,8 +704,6 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 write(k->master, (char []){ key - 'A' + 1 }, 1);
                 return;
         }
-
-        if (action == GLFW_RELEASE) return;
 
         switch (key) {
         case GLFW_KEY_ENTER:

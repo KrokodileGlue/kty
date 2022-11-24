@@ -56,6 +56,22 @@ void tprintc(struct frame *f, uint32_t c)
         };
 }
 
+void tinsertblank(struct frame *f, int n)
+{
+	int dst, src, size;
+	struct glyph *line;
+
+	limit(&n, 0, f->col - f->c.x);
+
+	dst = f->c.x + n;
+	src = f->c.x;
+	size = f->col - dst;
+	line = f->line[f->c.y];
+
+	memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+	tclearregion(f, src, f->c.y, dst - 1, f->c.y);
+}
+
 void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
         _printf("tclearregion(%d,%d,%d,%d)\n", x0, y0, x1, y1);
@@ -210,7 +226,7 @@ void tputc(struct frame *f, uint32_t c)
         } else if (f->esc & ESC_START) {
                 if (f->esc & ESC_CSI) {
                         f->csi.buf[f->csi.len++] = c;
-                        if ((c > 0x40 && c < 0x7E)
+                        if ((c >= 0x40 && c <= 0x7E)
                                 || f->csi.len >= sizeof(f->csi.buf) - 1) {
                                 f->esc = 0;
 

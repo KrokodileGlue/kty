@@ -11,23 +11,21 @@
 
 void csiparse(struct frame *f)
 {
-	char *p = f->csi.buf, *np;
-	long v;
-
 	f->csi.narg = 0;
+	f->csi.buf[f->csi.len] = 0;
+
+	char *p = f->csi.buf;
+
 	if (*p == '?') {
 		f->csi.priv = 1;
 		p++;
 	}
 
-	f->csi.buf[f->csi.len] = 0;
 	while (p < f->csi.buf + f->csi.len) {
-		np = NULL;
-		v = strtol(p, &np, 10);
-		if (np == p)
-			break;
-		if (v == LONG_MAX || v == LONG_MIN)
-			v = -1;
+		char *np = NULL;
+		long v = strtol(p, &np, 10);
+		if (np == p) break;
+		if (v == LONG_MAX || v == LONG_MIN) v = -1;
 		f->csi.arg[f->csi.narg++] = v;
 		p = np;
 		if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
@@ -89,11 +87,17 @@ void get_csi_graphic_mode(struct frame *f, long arg, int *mode)
         }
 }
 
+/*
+ * Handles the 'h' escape code.
+ */
 void handle_terminal_mode(struct frame *f, int set)
 {
         int mode = 0;
 
         switch (f->csi.arg[0]) {
+        case 1:                 /* DECCKM - Cursor key */
+                mode |= MODE_APPCURSOR;
+                break;
         case 25: /* Make cursor visible */
                 mode |= MODE_CURSOR_VISIBLE;
                 break;
@@ -108,6 +112,9 @@ void handle_terminal_mode(struct frame *f, int set)
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
+	case '@': /* ICH -- Insert <n> blank char */
+		tinsertblank(f, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
         case 'A': /* Move cursor up n lines */
                 tmoveto(f, f->c.x, f->c.y - DEFAULT(f->csi.arg[0], 1));
                 break;
@@ -185,7 +192,7 @@ void csihandle(struct frame *f)
                 break;
         case 'X': /* ECH - Erase n chars */
                 tclearregion(f, f->c.x, f->c.y,
-                        f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
+                             f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
                 break;
         case ' ':
                 if (f->csi.mode[1] == 'q') {
