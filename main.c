@@ -25,12 +25,6 @@
 
 int init_gl_resources(struct frame *f)
 {
-        /*
-         * TODO: To support color fonts and stuff, each font must have its own
-         * shader program. For now we're only dealing with colorless fonts so
-         * we can use an alpha mask, so one shader program works for all.
-         */
-
         const char vs[] = "#version 120\n\
 attribute vec2 coord;\n\
 attribute vec3 decoration_color;\n\
