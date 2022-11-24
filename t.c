@@ -25,7 +25,7 @@ int limit(int *x, int y, int z)
 
 void tresize(struct frame *f, int col, int row)
 {
-        _printf("tresize(%d,%d -> %d,%d)\n", f->col, f->row, col, row);
+        _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
 
         f->line = realloc(f->line, row * sizeof *f->line);
 
@@ -46,7 +46,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        _printf("tprintc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
+        _printf("Printing U+%x/%c at %d,%d\n", c, c, f->c.x, f->c.y);
         f->dirty_display = 1;
         f->line[f->c.y][f->c.x] = (struct glyph){
                 .c = c,
@@ -74,7 +74,7 @@ void tinsertblank(struct frame *f, int n)
 
 void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
-        _printf("tclearregion(%d,%d,%d,%d)\n", x0, y0, x1, y1);
+        _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
         for (int i = y0; i <= y1; i++)
                 for (int j = x0; j <= x1; j++)
@@ -89,7 +89,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 
 void tmoveto(struct frame *f, int x, int y)
 {
-        _printf("tmoveto(%d,%d)\n", x, y);
+        _printf("Moving cursor to %d,%d\n", x, y);
 
 	int miny, maxy;
 
@@ -109,7 +109,7 @@ void tmoveto(struct frame *f, int x, int y)
 
 void tmoveato(struct frame *f, int x, int y)
 {
-        _printf("tmoveato(%d,%d)\n", x, y);
+        _printf("Moving cursor to %d,%d\n", x, y);
 	tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top: 0));
 }
 
@@ -143,7 +143,7 @@ void tscrolldown(struct frame *f, int orig, int n)
 
 void tscrollup(struct frame *f, int orig, int n)
 {
-        _printf("tscrollup(%d,%d)\n", orig, n);
+        _printf("Scrolling %d lines around %d\n", n, orig);
 
         tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
 
@@ -158,7 +158,7 @@ void tscrollup(struct frame *f, int orig, int n)
 
 void tnewline(struct frame *f, int first_col)
 {
-        _printf("tnewline(%d)\n", first_col);
+        _printf("tnewline\n", first_col);
 
         int y = f->c.y;
 
@@ -171,9 +171,21 @@ void tnewline(struct frame *f, int first_col)
         tmoveto(f, first_col ? 0 : f->c.x, y);
 }
 
+/*
+ * Parse and execute string escape sequences.
+ */
+void strhandle(struct frame *f)
+{
+        _printf("\x1b[33m%.*s\x1b[39m\n", f->esc_str.len, f->esc_str.buf);
+        f->esc_str.len = 0;
+        f->esc_str.type = 0;
+        f->esc &= ~(ESC_STR | ESC_STR | ESC_STR_END);
+}
+
 void tcontrolcode(struct frame *f, uint32_t c)
 {
-        _printf("control code %"PRIX32"\n", c);
+        _printf("\x1b[35m\\x%"PRIx32"\x1b[39m\n", c);
+
         switch (c) {
         case ESC:
                 f->esc |= ESC_START;
@@ -189,6 +201,9 @@ void tcontrolcode(struct frame *f, uint32_t c)
                 tmoveto(f, (f->c.x / 8 + 1) * 8, f->c.y);
                 break;
         case BEL:
+                /* The bell sound is annoying anyway. */
+                if (f->esc & ESC_STR_END)
+                        strhandle(f);
                 break;
         case BS:
                 tmoveto(f, f->c.x - 1, f->c.y);
@@ -221,6 +236,25 @@ void tputc(struct frame *f, uint32_t c)
 
         /* Here's the legwork of actually interpreting commands. */
 
+        if (f->esc & ESC_STR) {
+		if (c == '\a' || c == 030 || c == 032 || c == 033
+                    || ISCONTROLC1(c)) {
+			f->esc &= ~(ESC_START|ESC_STR);
+			f->esc |= ESC_STR_END;
+			goto check_control_code;
+		}
+
+                /* TODO: Handle unending string escape sequences. */
+
+                unsigned len;
+                unsigned char buf[4];
+                utf8encode(c, buf, &len);
+		memmove(&f->esc_str.buf[f->esc_str.len], buf, len);
+		f->esc_str.len += len;
+		return;
+        }
+
+ check_control_code:
         if (ISCONTROL(c)) {
                 tcontrolcode(f, c);
         } else if (f->esc & ESC_START) {
@@ -246,6 +280,27 @@ void tputc(struct frame *f, uint32_t c)
                 tprintc(f, c);
                 f->c.x += wcwidth(c);
         }
+}
+
+void tstrsequence(struct frame *f, unsigned char c)
+{
+        switch (c) {
+        case 0x90:              /* DCS - Device control string */
+                c = 'P';
+                break;
+        case 0x9f:             /* APC - Application program command */
+                c = '_';
+                break;
+        case 0x9e:              /* PM - Privacy message */
+                c = '^';
+                break;
+        case 0x9d:              /* OSC - Operating system command */
+                c = ']';
+                break;
+        }
+
+        f->esc_str.type = c;
+        f->esc |= ESC_STR;
 }
 
 int twrite(struct frame *f, const char *buf, int buflen)

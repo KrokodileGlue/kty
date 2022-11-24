@@ -15,5 +15,7 @@ void tprintc(struct frame *f, uint32_t c);
 void tresize(struct frame *f, int col, int row);
 void tdeletechar(struct frame *f, int n);
 void tinsertblank(struct frame *f, int n);
+void tstrsequence(struct frame *f, unsigned char c);
+void strhandle(struct frame *f);
 
 #endif

@@ -111,6 +111,8 @@ struct font_renderer {
 enum {
         ESC_START = 1,
         ESC_CSI = 1 << 1,
+        ESC_STR = 1 << 2,
+        ESC_STR_END = 1 << 3,
 };
 
 enum {
@@ -154,6 +156,12 @@ struct frame {
                 int priv;
                 int mode[2];
         } csi;
+
+        struct {
+                char buf[2048];
+                unsigned len;
+                char type;
+        } esc_str;
 
         int mode;
         int esc;

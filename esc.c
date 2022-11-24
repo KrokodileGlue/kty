@@ -36,10 +36,14 @@ void csiparse(struct frame *f)
 	f->csi.mode[0] = *p++;
 	f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
 
-        _printf("(%.*s) -> ESC '[' [[ [<priv:%d>] ", f->csi.len, f->csi.buf, f->csi.priv);
+#ifdef DEBUG
+        static char buf[2048] = { 0 };
+        snprintf(buf, sizeof buf, "%.*s%s -> ", f->csi.len, f->csi.buf, f->csi.priv ? " (priv)" : "");
         for (int i = 0; i < f->csi.narg; i++)
-                fprintf(stderr, "<arg:%ld> [;]", f->csi.arg[i]);
-        fprintf(stderr, "] <mode:%d:%c> [<mode:%d>]]\n", f->csi.mode[0], f->csi.mode[0], f->csi.mode[1]);
+                snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%ld ", f->csi.arg[i]);
+        snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "mode %c mode %d\n", f->csi.mode[0], f->csi.mode[1]);
+        _printf("%s", buf);
+#endif
 }
 
 void get_csi_graphic_mode(struct frame *f, long arg, int *mode)
@@ -221,13 +225,24 @@ int eschandle(struct frame *f, uint32_t c)
         case '[':
                 f->esc |= ESC_CSI;
                 return 0;
-	case 'M': /* RI - Reverse index */
+        case 'P': /* DCS -- Device Control String */
+        case '_': /* APC -- Application Program Command */
+        case '^': /* PM -- Privacy Message */
+        case ']': /* OSC -- Operating System Command */
+        case 'k': /* old title set compatibility */
+                tstrsequence(f, c);
+                return 0;
+        case 'M': /* RI - Reverse index */
                 if (f->c.y == f->top) {
                         tscrolldown(f, f->top, 1);
                 } else {
                         tmoveto(f, f->c.x, f->c.y - 1);
                 }
                 return 1;
+        case '\\': /* ST - String terminator */
+                if (f->esc & ESC_STR_END)
+                        strhandle(f);
+                break;
         default:
                 _printf("\x1b[31mUnhandled escape %c\x1b[0m\n", (unsigned char)c);
         }

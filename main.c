@@ -143,7 +143,7 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
 #ifdef DEBUG
         unsigned char buf[5] = { 0 };
         utf8encode(c, buf, &(unsigned){0});
-        _printf("Adding sprite U+%x (%s) to font %s\n", c, buf, font->path);
+        _printf("Adding sprite U+%x (%s) to %s\n", c, buf, font->path);
 #endif
 
         if (!slot->bitmap.buffer) {
@@ -188,8 +188,7 @@ struct sprite *get_sprite(struct frame *f, uint32_t c)
         for (int i = 0; i < font->num_glyph; i++)
                 m = font->glyph[i].height > m ? font->glyph[i].height : m;
 
-        _printf("-> %d,%d\n", x, y);
-        _printf("(%d,%d)\n", cw, ch);
+        _printf("\tStored at spritemap coordinates %d,%d\n", x, y);
 
         if (font->is_color_font && x + cw * 4 >= 2048 * 4) {
                 x = 0;
