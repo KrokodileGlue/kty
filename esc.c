@@ -204,7 +204,7 @@ void csihandle(struct frame *f)
                 }
                 break;
         default:
-                fprintf(stderr, "Unhandled escape sequence\n");
+                _printf(" ^ \x1b[33mUnhandled CSI\x1b[0m\n");
                 break;
         }
 }

@@ -816,6 +816,9 @@ static struct key {
         { GLFW_KEY_PAGE_DOWN,   GLFW_MOD_SHIFT,                               "\033[6;2~", 0,  0  },
         { GLFW_KEY_PAGE_DOWN,   0,                                            "\033[6~",   0,  0  },
 
+        { GLFW_KEY_TAB,         0,                                            "\t",        0,  0  },
+        { GLFW_KEY_ESCAPE,      0,                                            "\x1b",      0,  0  },
+
         { GLFW_KEY_F1,                   0,       "\033OP" ,       0,    0},
         { GLFW_KEY_F1, /* F13 */  GLFW_MOD_SHIFT,      "\033[1;2P",     0,    0},
         { GLFW_KEY_F1, /* F25 */  GLFW_MOD_CONTROL,    "\033[1;5P",     0,    0},
@@ -914,15 +917,17 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                         break;
                 }
 
-                if (keys[i].appcursor > 0 && !(k->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor < 0 && !(k->mode & MODE_APPCURSOR))
                         continue;
 
-                if (keys[i].appcursor < 0 && (k->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor > 0 && (k->mode & MODE_APPCURSOR))
                         continue;
 
                 s = keys[i].s;
                 break;
         }
+
+        if (s) _printf("Key string \x1b[36m^[%s\x1b[0m\n", s + 1);
 
         if (s) write(k->master, s, strlen(s));
 }
