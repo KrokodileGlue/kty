@@ -215,11 +215,20 @@ void resetesc(struct frame *f)
         f->esc = 0;
 }
 
-void eschandle(struct frame *f, uint32_t c)
+int eschandle(struct frame *f, uint32_t c)
 {
         switch (c) {
         case '[':
                 f->esc |= ESC_CSI;
-                break;
+                return 0;
+	case 'M': /* RI - Reverse index */
+                if (f->c.y == f->top) {
+                        tscrolldown(f, f->top, 1);
+                } else {
+                        tmoveto(f, f->c.x, f->c.y - 1);
+                }
+                return 1;
+        default:
+                _printf("\x1b[31mUnhandled escape %c\x1b[0m\n", (unsigned char)c);
         }
 }

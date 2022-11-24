@@ -240,9 +240,8 @@ void tputc(struct frame *f, uint32_t c)
                                 resetesc(f);
                         }
                         return;
-                } else {
-                        eschandle(f, c);
-                }
+                } else if (eschandle(f, c))
+                        resetesc(f);
         } else if (f->c.x < f->col) {
                 tprintc(f, c);
                 f->c.x += wcwidth(c);
