@@ -171,10 +171,14 @@ struct frame {
          * the position/display of the cursor.
          */
         int dirty_display;
+
+        char *title;
 };
 
 struct color {
         GLfloat r, g, b;
 };
+
+struct frame *frame_new(char **env);
 
 #endif

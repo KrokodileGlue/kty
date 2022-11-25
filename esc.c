@@ -246,4 +246,6 @@ int eschandle(struct frame *f, uint32_t c)
         default:
                 _printf("\x1b[31mUnhandled escape %c\x1b[0m\n", (unsigned char)c);
         }
+
+        return 1;
 }

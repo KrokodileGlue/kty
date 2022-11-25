@@ -654,19 +654,13 @@ void *read_shell(void *arg)
         while (1) {
                 ret = read(f->master, buf + buflen, sizeof buf / sizeof *buf - buflen);
 
-                switch (ret) {
-                case 0:
-                        exit(0);
-                case -1:
-                        fprintf(stderr, "Couldn't read from shell\n");
-                        exit(1);
-                default:
-                        buflen += ret;
-                        written = twrite(f, buf, buflen);
-                        buflen -= written;
-                        if (buflen > 0)
-                                memmove(buf, buf + written, buflen);
-                }
+                if (ret <= 0) break;
+
+                buflen += ret;
+                written = twrite(f, buf, buflen);
+                buflen -= written;
+                if (buflen > 0)
+                        memmove(buf, buf + written, buflen);
         }
 
         f->shell_done = true;
@@ -955,79 +949,17 @@ void window_size_callback(GLFWwindow *window, int width, int height)
                 perror("ioctl");
 }
 
-int main(int, char **, char **env)
+int main(int, char **argv, char **env)
 {
-        /* Set up the PTY. */
-        int master = posix_openpt(O_RDWR | O_NOCTTY);
-
-        if (master == -1) {
-                perror("posix_openpt");
-                return 1;
-        }
-
-        if (grantpt(master) == -1) {
-                perror("grantpt");
-                return 1;
-        }
-
-        if (unlockpt(master) == -1) {
-                perror("unlockpt");
-                return 1;
-        }
-
-        const char *slave_name = ptsname(master);
-
-        if (!slave_name) {
-                perror("ptsname");
-                return 1;
-        }
-
-        puts(slave_name);
-
-        int slave = open(slave_name, O_RDWR | O_NOCTTY);
-
-        if (slave == -1) {
-                perror("open");
-                return 1;
-        }
-
-        int p = fork();
-
-        if (!p) {
-                close(master);
-
-                setsid();
-                if (ioctl(slave, TIOCSCTTY, NULL) == -1) {
-                        perror("ioctl");
-                        return 1;
-                }
-
-                dup2(slave, 0);
-                dup2(slave, 1);
-                dup2(slave, 2);
-                close(slave);
-
-                execle("/bin/bash", "/bin/bash", NULL, env);
-        } else {
-                close(slave);
-        }
-
-        /* The shell is running, now set up the window/graphics. */
-        k = calloc(sizeof *k, 1);
-        if (!k) return 1;
-
-        k->master = master;
-        k->mode = MODE_CURSOR_VISIBLE;
+        k = frame_new(env);
 
         if (!glfwInit()) return 1;
 
-        GLFWwindow *window = glfwCreateWindow(
-                                              WINDOW_WIDTH,
+        GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH,
                                               WINDOW_HEIGHT,
-                                              "Hello, world!",
+                                              argv[0],
                                               NULL,
-                                              NULL
-                                              );
+                                              NULL);
 
         if (!window) {
                 glfwTerminate();
