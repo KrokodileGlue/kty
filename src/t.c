@@ -61,18 +61,18 @@ void tprintc(struct frame *f, uint32_t c)
 
 void tinsertblank(struct frame *f, int n)
 {
-	int dst, src, size;
-	struct glyph *line;
+        int dst, src, size;
+        struct glyph *line;
 
-	limit(&n, 0, f->col - f->c.x);
+        limit(&n, 0, f->col - f->c.x);
 
-	dst = f->c.x + n;
-	src = f->c.x;
-	size = f->col - dst;
-	line = f->line[f->c.y];
+        dst = f->c.x + n;
+        src = f->c.x;
+        size = f->col - dst;
+        line = f->line[f->c.y];
 
-	memmove(&line[dst], &line[src], size * sizeof(struct glyph));
-	tclearregion(f, src, f->c.y, dst - 1, f->c.y);
+        memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+        tclearregion(f, src, f->c.y, dst - 1, f->c.y);
 }
 
 void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
@@ -94,26 +94,26 @@ void tmoveto(struct frame *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
 
-	int miny, maxy;
+        int miny, maxy;
 
-	if (f->c.state & CURSOR_ORIGIN) {
-		miny = f->top;
-		maxy = f->bot;
-	} else {
-		miny = 0;
-		maxy = f->row - 1;
-	}
+        if (f->c.state & CURSOR_ORIGIN) {
+                miny = f->top;
+                maxy = f->bot;
+        } else {
+                miny = 0;
+                maxy = f->row - 1;
+        }
 
-	f->c.state &= ~CURSOR_WRAPNEXT;
-	f->c.x = limit(&x, 0, f->col - 1);
-	f->c.y = limit(&y, miny, maxy);
+        f->c.state &= ~CURSOR_WRAPNEXT;
+        f->c.x = limit(&x, 0, f->col - 1);
+        f->c.y = limit(&y, miny, maxy);
         f->dirty_display = 1;
 }
 
 void tmoveato(struct frame *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
-	tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top: 0));
+        tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top: 0));
 }
 
 void tsetscroll(struct frame *f, int top, int bot)
@@ -176,20 +176,20 @@ void tnewline(struct frame *f, int first_col)
 
 void tstrparse(struct frame *f)
 {
-	f->esc_str.narg = 0;
-	f->esc_str.buf[f->esc_str.len] = 0;
+        f->esc_str.narg = 0;
+        f->esc_str.buf[f->esc_str.len] = 0;
 
-	char *p = f->esc_str.buf;
+        char *p = f->esc_str.buf;
 
-	if (!*p) return;
+        if (!*p) return;
 
-	while (f->esc_str.narg < ESC_ARG_SIZE) {
-		f->esc_str.arg[f->esc_str.narg++] = p;
+        while (f->esc_str.narg < ESC_ARG_SIZE) {
+                f->esc_str.arg[f->esc_str.narg++] = p;
                 int c;
-		while ((c = *p) && c != ';') ++p;
-		if (!c) return;
-		*p++ = 0;
-	}
+                while ((c = *p) && c != ';') ++p;
+                if (!c) return;
+                *p++ = 0;
+        }
 }
 
 /*
@@ -224,9 +224,9 @@ void tstrhandle(struct frame *f)
         case '^':              /* PM - Privacy message */
                 _printf("\x1b[34mTODO: PM - Privacy message\x1b[39m\n");
                 break;
-	case 'k':
+        case 'k':
                 frame_title(f, f->esc_str.arg[0]);
-		break;
+                break;
         default:
                 _printf("\x1b[34mUnhandled string escape sequence with type `%c`\x1b[39m\n", f->esc_str.type);
                 break;
@@ -270,18 +270,18 @@ void tcontrolcode(struct frame *f, uint32_t c)
 
 void tdeletechar(struct frame *f, int n)
 {
-	int dst, src, size;
-	struct glyph *line;
+        int dst, src, size;
+        struct glyph *line;
 
-	limit(&n, 0, f->col - f->c.x);
+        limit(&n, 0, f->col - f->c.x);
 
-	dst = f->c.x;
-	src = f->c.x + n;
-	size = f->col - src;
-	line = f->line[f->c.y];
+        dst = f->c.x;
+        src = f->c.x + n;
+        size = f->col - src;
+        line = f->line[f->c.y];
 
-	memmove(&line[dst], &line[src], size * sizeof(struct glyph));
-	tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
+        memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+        tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
 }
 
 void tputc(struct frame *f, uint32_t c)
@@ -294,21 +294,21 @@ void tputc(struct frame *f, uint32_t c)
         /* Here's the legwork of actually interpreting commands. */
 
         if (f->esc & ESC_STR) {
-		if (c == '\a' || c == 030 || c == 032 || c == 033
-                    || ISCONTROLC1(c)) {
-			f->esc &= ~(ESC_START|ESC_STR);
-			f->esc |= ESC_STR_END;
-			goto check_control_code;
-		}
+                if (c == '\a' || c == 030 || c == 032 || c == 033
+                        || ISCONTROLC1(c)) {
+                        f->esc &= ~(ESC_START|ESC_STR);
+                        f->esc |= ESC_STR_END;
+                        goto check_control_code;
+                }
 
                 /* TODO: Handle unending string escape sequences. */
 
                 unsigned len;
                 unsigned char buf[4];
                 utf8encode(c, buf, &len);
-		memmove(&f->esc_str.buf[f->esc_str.len], buf, len);
-		f->esc_str.len += len;
-		return;
+                memmove(&f->esc_str.buf[f->esc_str.len], buf, len);
+                f->esc_str.len += len;
+                return;
         }
 
  check_control_code:

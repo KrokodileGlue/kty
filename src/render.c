@@ -35,7 +35,7 @@ varying vec3 tcolor;\n\
 void main(void) {\n\
         gl_Position = vec4(coord.xy, 0, 1);\n\
         dec_color = decoration_color;\n\
-	tcolor = tex_color;\n\
+        tcolor = tex_color;\n\
 }";
 
         const char fs[] = "#version 120\n\

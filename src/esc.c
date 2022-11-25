@@ -13,30 +13,30 @@
 
 void csiparse(struct frame *f)
 {
-	f->csi.narg = 0;
-	f->csi.buf[f->csi.len] = 0;
+        f->csi.narg = 0;
+        f->csi.buf[f->csi.len] = 0;
 
-	char *p = f->csi.buf;
+        char *p = f->csi.buf;
 
-	if (*p == '?') {
-		f->csi.priv = 1;
-		p++;
-	}
+        if (*p == '?') {
+                f->csi.priv = 1;
+                p++;
+        }
 
-	while (p < f->csi.buf + f->csi.len) {
-		char *np = NULL;
-		long v = strtol(p, &np, 10);
-		if (np == p) break;
-		if (v == LONG_MAX || v == LONG_MIN) v = -1;
-		f->csi.arg[f->csi.narg++] = v;
-		p = np;
-		if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
-			break;
-		p++;
-	}
+        while (p < f->csi.buf + f->csi.len) {
+                char *np = NULL;
+                long v = strtol(p, &np, 10);
+                if (np == p) break;
+                if (v == LONG_MAX || v == LONG_MIN) v = -1;
+                f->csi.arg[f->csi.narg++] = v;
+                p = np;
+                if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
+                        break;
+                p++;
+        }
 
-	f->csi.mode[0] = *p++;
-	f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
+        f->csi.mode[0] = *p++;
+        f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
 
 #ifdef DEBUG
         static char buf[2048] = { 0 };
@@ -118,9 +118,9 @@ void handle_terminal_mode(struct frame *f, int set)
 void csihandle(struct frame *f)
 {
         switch (f->csi.mode[0]) {
-	case '@': /* ICH -- Insert <n> blank char */
-		tinsertblank(f, f->csi.narg ? f->csi.arg[0] : 1);
-		break;
+        case '@': /* ICH -- Insert <n> blank char */
+                tinsertblank(f, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
         case 'A': /* Move cursor up n lines */
                 tmoveto(f, f->c.x, f->c.y - DEFAULT(f->csi.arg[0], 1));
                 break;
@@ -241,13 +241,13 @@ int eschandle(struct frame *f, uint32_t c)
                         tmoveto(f, f->c.x, f->c.y - 1);
                 }
                 return 1;
-	case '(': /* GZD4 - Set primary charset G0 */
-	case ')': /* G1D4 - Set secondary charset G1 */
-	case '*': /* G2D4 - Set tertiary charset G2 */
-	case '+': /* G3D4 - Set quaternary charset G3 */
-		f->icharset = c - '(';
-		f->esc |= ESC_ALTCHARSET;
-		return 0;
+        case '(': /* GZD4 - Set primary charset G0 */
+        case ')': /* G1D4 - Set secondary charset G1 */
+        case '*': /* G2D4 - Set tertiary charset G2 */
+        case '+': /* G3D4 - Set quaternary charset G3 */
+                f->icharset = c - '(';
+                f->esc |= ESC_ALTCHARSET;
+                return 0;
         case '\\': /* ST - String terminator */
                 if (f->esc & ESC_STR_END)
                         tstrhandle(f);
