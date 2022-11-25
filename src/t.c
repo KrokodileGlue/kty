@@ -215,17 +215,14 @@ void tstrhandle(struct frame *f)
                         break;
                 }
                 break;
-        case 0x90:              /* DCS - Device control string */
+        case 'P':              /* DCS - Device control string */
                 _printf("\x1b[34mTODO: DCS - Device control string\x1b[39m\n");
                 break;
-        case 0x9f:             /* APC - Application program command */
+        case '_':             /* APC - Application program command */
                 _printf("\x1b[34mTODO: APC - Application program command\x1b[39m\n");
                 break;
-        case 0x9e:              /* PM - Privacy message */
+        case '^':              /* PM - Privacy message */
                 _printf("\x1b[34mTODO: PM - Privacy message\x1b[39m\n");
-                break;
-        case 0x9d:              /* OSC - Operating system command */
-                _printf("\x1b[34mTODO: OSC - Operating system command\x1b[39m\n");
                 break;
 	case 'k':
                 frame_title(f, f->esc_str.arg[0]);
