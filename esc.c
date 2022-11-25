@@ -3,6 +3,8 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 
+#include <GLFW/glfw3.h>
+
 #include "util.h"
 #include "frame.h"
 #include "util.h"
@@ -248,7 +250,7 @@ int eschandle(struct frame *f, uint32_t c)
 		return 0;
         case '\\': /* ST - String terminator */
                 if (f->esc & ESC_STR_END)
-                        strhandle(f);
+                        tstrhandle(f);
                 break;
         default:
                 _printf("\x1b[31mUnhandled escape %c\x1b[0m\n", (unsigned char)c);

@@ -20,7 +20,7 @@
 #include "util.h"
 #include "frame.h"
 
-struct frame *frame_new(char **env)
+struct frame *frame_new(GLFWwindow *window, char **env)
 {
         /* Set up the PTY. */
         int master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -80,6 +80,15 @@ struct frame *frame_new(char **env)
 
         f->master = master;
         f->mode = MODE_CURSOR_VISIBLE;
+        f->glfw_window = window;
 
         return f;
+}
+
+void frame_title(struct frame *f, const char *title)
+{
+        free(f->title);
+        f->title = malloc(strlen(title) + 1); /* TODO: xmalloc */
+        strcpy(f->title, title);
+        if (f->focused) glfwSetWindowTitle(f->glfw_window, f->title);
 }

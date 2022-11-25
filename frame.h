@@ -139,6 +139,9 @@ struct frame {
         GLint uniform_is_solid;
         GLint uniform_is_color;
 
+        /* Window */
+        GLFWwindow *glfw_window;
+
         /* State */
         struct window w;
         int col, row;
@@ -161,7 +164,9 @@ struct frame {
         struct {
                 char buf[2048];
                 unsigned len;
-                char type;
+                unsigned char type;
+                char *arg[ESC_ARG_SIZE];
+                int narg;
         } esc_str;
 
         int mode;
@@ -175,12 +180,14 @@ struct frame {
 
         char *title;
         int icharset;
+        int focused;
 };
 
 struct color {
         GLfloat r, g, b;
 };
 
-struct frame *frame_new(char **env);
+struct frame *frame_new(GLFWwindow *window, char **env);
+void frame_title(struct frame *f, const char *title);
 
 #endif

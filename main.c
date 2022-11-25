@@ -35,8 +35,6 @@ struct frame *k;
 
 int main(int, char **argv, char **env)
 {
-        k = frame_new(env);
-
         if (!glfwInit()) return 1;
 
         GLFWwindow *window = glfwCreateWindow(WINDOW_WIDTH,
@@ -49,6 +47,9 @@ int main(int, char **argv, char **env)
                 glfwTerminate();
                 return 1;
         }
+
+        k = frame_new(window, env);
+        k->focused = 1;
 
         glfwMakeContextCurrent(window);
 

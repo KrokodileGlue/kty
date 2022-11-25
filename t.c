@@ -8,6 +8,9 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 
+/* TODO: Remove GLFW specific stuff from the frame. */
+#include <GLFW/glfw3.h>
+
 #include "gl.h"
 #include "util.h"
 #include "frame.h"
@@ -171,15 +174,70 @@ void tnewline(struct frame *f, int first_col)
         tmoveto(f, first_col ? 0 : f->c.x, y);
 }
 
+void tstrparse(struct frame *f)
+{
+	f->esc_str.narg = 0;
+	f->esc_str.buf[f->esc_str.len] = 0;
+
+	char *p = f->esc_str.buf;
+
+	if (!*p) return;
+
+	while (f->esc_str.narg < ESC_ARG_SIZE) {
+		f->esc_str.arg[f->esc_str.narg++] = p;
+                int c;
+		while ((c = *p) && c != ';') ++p;
+		if (!c) return;
+		*p++ = 0;
+	}
+}
+
 /*
  * Parse and execute string escape sequences.
  */
-void strhandle(struct frame *f)
+void tstrhandle(struct frame *f)
 {
         _printf("\x1b[33m%.*s\x1b[39m\n", f->esc_str.len, f->esc_str.buf);
+
+        tstrparse(f);
+
+        int par = f->esc_str.narg ? atoi(f->esc_str.arg[0]) : 0;
+
+        switch (f->esc_str.type) {
+        case ']':
+                switch (par) {
+                case 0:
+                        if (f->esc_str.narg > 1)
+                                frame_title(f, f->esc_str.arg[1]);
+                        break;
+                default:
+                        _printf("\x1b[34mUnhandled `[` style string escape sequence\n");
+                        break;
+                }
+                break;
+        case 0x90:              /* DCS - Device control string */
+                _printf("\x1b[34mTODO: DCS - Device control string\x1b[39m\n");
+                break;
+        case 0x9f:             /* APC - Application program command */
+                _printf("\x1b[34mTODO: APC - Application program command\x1b[39m\n");
+                break;
+        case 0x9e:              /* PM - Privacy message */
+                _printf("\x1b[34mTODO: PM - Privacy message\x1b[39m\n");
+                break;
+        case 0x9d:              /* OSC - Operating system command */
+                _printf("\x1b[34mTODO: OSC - Operating system command\x1b[39m\n");
+                break;
+	case 'k':
+                frame_title(f, f->esc_str.arg[0]);
+		break;
+        default:
+                _printf("\x1b[34mUnhandled string escape sequence with type `%c`\x1b[39m\n", f->esc_str.type);
+                break;
+        }
+
         f->esc_str.len = 0;
         f->esc_str.type = 0;
-        f->esc &= ~(ESC_STR | ESC_STR | ESC_STR_END);
+        f->esc &= ~(ESC_STR | ESC_STR_END);
 }
 
 void tcontrolcode(struct frame *f, uint32_t c)
@@ -205,7 +263,7 @@ void tcontrolcode(struct frame *f, uint32_t c)
         case BEL:
                 /* The bell sound is annoying anyway. */
                 if (f->esc & ESC_STR_END)
-                        strhandle(f);
+                        tstrhandle(f);
                 break;
         case BS:
                 tmoveto(f, f->c.x - 1, f->c.y);
