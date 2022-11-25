@@ -5,6 +5,7 @@
 #include <GL/gl.h>
 
 #include "gl.h"
+#include "util.h"
 
 int print_gl_error_log(GLuint object)
 {
@@ -27,7 +28,7 @@ int print_gl_error_log(GLuint object)
                 glGetProgramInfoLog(object, log_length, NULL, log);
         }
 
-        fprintf(stderr, "%s", log);
+        _printf("OpenGL error: %s", log);
         free(log);
 
         return 0;
@@ -55,7 +56,7 @@ int bind_uniform_to_program(GLuint program, const char *name)
         int coord = glGetUniformLocation(program, name);
 
         if (coord < 0) {
-                fprintf(stderr, "Couldn't bind uniform %s\n", name);
+                _printf("Couldn't bind uniform %s\n", name);
                 exit(1);
         }
 
@@ -67,7 +68,7 @@ int bind_attribute_to_program(GLuint program, const char *name)
         int coord = glGetAttribLocation(program, name);
 
         if (coord < 0) {
-                fprintf(stderr, "Couldn't bind attribute %s\n", name);
+                _printf("Couldn't bind attribute %s\n", name);
                 exit(1);
         }
 
