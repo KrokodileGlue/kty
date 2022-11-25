@@ -272,7 +272,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 
         /* Calculate the vertex and texture coordinates. */
         float x = -1 + (f->w.cw * x0) * sx;
-        float y = 1 - (f->w.ch * (1 + y0)) * sy - LINE_SPACING * y0 * sy - 0.25 * LINE_SPACING * sy;
+        float y = 1 - (f->w.ch * (1 + y0)) * sy - LINE_SPACING * y0 * sy;
         float x2 = x + metrics.horiBearingX * 1.0/64.0 * sx;
         float y2 = -y - sprite->bitmap_top * sy;
         float w = metrics.width * 1.0/64.0 * sx;
@@ -382,7 +382,7 @@ void render_cursor(struct frame *f)
         float sy = 2.0 / (float)f->w.height;
 
         float w = -1 + (f->w.cw * x) * sx;
-        float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy - 1 * sy;
+        float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy;
         float s = n - f->w.ch * sy - LINE_SPACING * sy;
         float e = w + f->w.cw * sx;
 
