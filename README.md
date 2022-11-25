@@ -1,6 +1,7 @@
 # TODO
 
-+ Implement colors (foreground, background, swap, 256 color)
+* Implement 256 color
+
 + Implement multiple cursor styles
 + Interpret ZWJ sequences
 
@@ -32,10 +33,10 @@
 + Allow overriding the font for specific code points
 + Custom line drawing functionality
 + Add a client/server model to reduce startup time and system load
-+ Avoid redrawing the screen when there hasn't been any change (vbo_dirty)
 + Add LuaJIT scripting
 + Unit testing
 + Use hash table for glyph lookup (ASCII can be O(1))
++ Write tiling frame manager
 
 Script ideas:
 
