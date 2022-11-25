@@ -113,6 +113,7 @@ enum {
         ESC_CSI = 1 << 1,
         ESC_STR = 1 << 2,
         ESC_STR_END = 1 << 3,
+        ESC_ALTCHARSET = 1 << 4,
 };
 
 enum {
@@ -173,6 +174,7 @@ struct frame {
         int dirty_display;
 
         char *title;
+        int icharset;
 };
 
 struct color {

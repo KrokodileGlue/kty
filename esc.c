@@ -28,7 +28,7 @@ void csiparse(struct frame *f)
 		if (v == LONG_MAX || v == LONG_MIN) v = -1;
 		f->csi.arg[f->csi.narg++] = v;
 		p = np;
-		if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
+		if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
 			break;
 		p++;
 	}
@@ -239,6 +239,13 @@ int eschandle(struct frame *f, uint32_t c)
                         tmoveto(f, f->c.x, f->c.y - 1);
                 }
                 return 1;
+	case '(': /* GZD4 - Set primary charset G0 */
+	case ')': /* G1D4 - Set secondary charset G1 */
+	case '*': /* G2D4 - Set tertiary charset G2 */
+	case '+': /* G3D4 - Set quaternary charset G3 */
+		f->icharset = c - '(';
+		f->esc |= ESC_ALTCHARSET;
+		return 0;
         case '\\': /* ST - String terminator */
                 if (f->esc & ESC_STR_END)
                         strhandle(f);

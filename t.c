@@ -188,6 +188,8 @@ void tcontrolcode(struct frame *f, uint32_t c)
 
         switch (c) {
         case ESC:
+                resetcsi(f);
+                f->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
                 f->esc |= ESC_START;
                 break;
         case LF:
@@ -274,6 +276,8 @@ void tputc(struct frame *f, uint32_t c)
                                 resetesc(f);
                         }
                         return;
+                } else if (f->esc & ESC_ALTCHARSET) {
+                        _printf("TODO: Handle alternate charsets\n");
                 } else if (eschandle(f, c))
                         resetesc(f);
         } else if (f->c.x < f->col) {
