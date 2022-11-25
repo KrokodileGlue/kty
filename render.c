@@ -382,7 +382,7 @@ void render_cursor(struct frame *f)
         float sy = 2.0 / (float)f->w.height;
 
         float w = -1 + (f->w.cw * x) * sx;
-        float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy;
+        float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy - 1 * sy;
         float s = n - f->w.ch * sy - LINE_SPACING * sy;
         float e = w + f->w.cw * sx;
 
