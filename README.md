@@ -1,6 +1,5 @@
 # TODO
 
-+ Fix arrow keys disappearing things in bash
 + Implement colors (foreground, background, swap, 256 color)
 + Implement multiple cursor styles
 + Interpret ZWJ sequences
@@ -15,9 +14,7 @@
 + When a wcwidth==2 character is printed clear the character after it
 + Handle overflowing spritemaps
 + Use a different spritemap for each font size
-+ Fix SSH
-+ Fix arrow keys generally (they don't work in `less`, for example)
-+ Add missing keys (fn, alt, pgup)
++ Fix arrow keys and home/end (or at least alt+home/alt+end)
 + Parse str escape sequences (used to set the application title)
 + Handle bitmap fonts (restrict zoom)
 + Implement zoom (basically just a resize, but interacts with windows)
