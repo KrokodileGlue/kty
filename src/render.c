@@ -309,13 +309,17 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         float h = metrics.height * 1.0/64.0 * sy;
 
         /*
-         * The `+ 1 * sy` term allows one pixel of leeway when we're
-         * resizing big characters. Theoretically with a proper
-         * monospace font there shouldn't be any characters taller
-         * than the advance width, but Deja Vu Sans Mono's j character
-         * is taller than the vertical advance width.
+         * HACK: The `+ 5 * sy` term allows five pixels of leeway when we're
+         * resizing big characters. Theoretically with a proper monospace font
+         * there shouldn't be any characters taller than the advance width, but
+         * that doesn't seem to be the case. Deja Vu Sans Mono's j character is
+         * taller than the vertical advance width, for example, and the line
+         * drawing characters also tend to exceed the vertical advance width in
+         * many fonts. This is mainly to deal with fonts like Noto Color Emoji
+         * which have really giant characters which refuse to render at other
+         * sizes and have to be forcibly scaled down.
          */
-        if (h > f->w.ch * sy + 1 * sy) {
+        if (h > f->w.ch * sy + 5 * sy) {
                 float tmp = wcwidth(c) * (float)f->w.cw * sx + 0.1 * LINE_SPACING * sx;
                 float ratio = tmp / w;
                 w = tmp;
