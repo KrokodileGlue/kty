@@ -259,25 +259,19 @@ struct color get_color_from_index(int i, struct color regular)
 {
         struct color c = regular;
 
-        if (i >= 0 && i <= 7) {
-                c = (struct color []) {
-                        { 0, 0, 0 },
-                        { 1, 0, 0 },
-                        { 0, 1, 0 },
-                        { 1, 1, 0 },
-                        { 0, 0, 1 },
-                        { 1, 0, 1 },
-                        { 0, 1, 1 },
-                        { 1, 1, 1 },
-                }[i];
-        } else if (i >= 8 && i <= 255 - 16) {
+        if (i >= 0 && i < 8) {
+                c = (struct color){ i % 2, (i / 2) % 2, i / 4 };
+        } else if (i >= 8 && i < 16) {
                 i -= 8;
+                c = (struct color){ i % 2, (i / 2) % 2, i / 4 };
+        } else if (i >= 16 && i < 256 - 24) {
+                i -= 16;
                 int B = i % 6;
                 int G = (i / 6) % 6;
                 int R = (i / 36) % 6;
                 c = (struct color){ R / 6.0, G / 6.0, B / 6.0 };
-        } else if (i >= 255 - 16 && i <= 255) {
-                i -= 255 - 16;
+        } else if (i >= 256 - 24 && i < 256) {
+                i -= 256 - 24;
                 float res = i / 24.0;
                 c = (struct color){ res, res, res };
         } else if (i >= 256) {
@@ -285,7 +279,7 @@ struct color get_color_from_index(int i, struct color regular)
                 int R = (i >> 16) & 0xFF;
                 int G = (i >> 8) & 0xFF;
                 int B = (i >> 0) & 0xFF;
-                c = (struct color){ (float)R / 255.0, (float)G / 255.0, (float)B / 255.0 };
+                c = (struct color){ R / 255.0, G / 255.0, B / 255.0 };
         }
 
         return c;
