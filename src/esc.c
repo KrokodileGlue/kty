@@ -156,7 +156,7 @@ void csihandle(struct frame *f)
                 }
                 break;
         default:
-                _printf(" ^ \x1b[33mUnhandled CSI\x1b[0m\n");
+                _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
                 break;
         }
 }
@@ -203,7 +203,7 @@ int eschandle(struct frame *f, uint32_t c)
                         tstrhandle(f);
                 break;
         default:
-                _printf("\x1b[31mUnhandled escape %c\x1b[0m\n", (unsigned char)c);
+                _printf("\e[31mUnhandled escape %c\e[0m\n", (unsigned char)c);
         }
 
         return 1;

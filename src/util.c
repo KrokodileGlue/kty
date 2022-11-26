@@ -11,7 +11,7 @@ void _printf(const char *func, const char *fmt, ...)
         struct tm *t = localtime(&(time_t){time(NULL)});
         char buf[BUFSIZ];
         strftime(buf, sizeof buf, "%H:%M:%S", t);
-        fprintf(stdout, "%s \x1b[32m%12s\x1b[0m ", buf, func);
+        fprintf(stdout, "%s \e[32m%12s\e[0m ", buf, func);
         vfprintf(stdout, fmt, args);
         va_end(args);
 }

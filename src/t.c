@@ -197,7 +197,7 @@ void tstrparse(struct frame *f)
  */
 void tstrhandle(struct frame *f)
 {
-        _printf("\x1b[33m%.*s\x1b[39m\n", f->esc_str.len, f->esc_str.buf);
+        _printf("\e[33m%.*s\e[39m\n", f->esc_str.len, f->esc_str.buf);
 
         tstrparse(f);
 
@@ -211,24 +211,24 @@ void tstrhandle(struct frame *f)
                                 frame_title(f, f->esc_str.arg[1]);
                         break;
                 default:
-                        _printf("\x1b[34mUnhandled `[` style string escape sequence\x1b[39m\n");
+                        _printf("\e[34mUnhandled `[` style string escape sequence\e[39m\n");
                         break;
                 }
                 break;
         case 'P':              /* DCS - Device control string */
-                _printf("\x1b[34mTODO: DCS - Device control string\x1b[39m\n");
+                _printf("\e[34mTODO: DCS - Device control string\e[39m\n");
                 break;
         case '_':             /* APC - Application program command */
-                _printf("\x1b[34mTODO: APC - Application program command\x1b[39m\n");
+                _printf("\e[34mTODO: APC - Application program command\e[39m\n");
                 break;
         case '^':              /* PM - Privacy message */
-                _printf("\x1b[34mTODO: PM - Privacy message\x1b[39m\n");
+                _printf("\e[34mTODO: PM - Privacy message\e[39m\n");
                 break;
         case 'k':
                 frame_title(f, f->esc_str.arg[0]);
                 break;
         default:
-                _printf("\x1b[34mUnhandled string escape sequence with type `%c`\x1b[39m\n", f->esc_str.type);
+                _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", f->esc_str.type);
                 break;
         }
 
@@ -239,7 +239,7 @@ void tstrhandle(struct frame *f)
 
 void tcontrolcode(struct frame *f, uint32_t c)
 {
-        _printf("\x1b[35m\\x%"PRIx32"\x1b[39m\n", c);
+        _printf("\e[35m\\x%"PRIx32"\e[39m\n", c);
 
         switch (c) {
         case ESC:
