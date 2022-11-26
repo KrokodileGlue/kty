@@ -341,17 +341,14 @@ void tputc(struct frame *f, uint32_t c)
         }
 }
 
-void thandlegraphicmode(struct frame *f, long arg, int *mode)
+void thandlegraphicmode(struct frame *f, long arg)
 {
-        /*
-         * First let's just handle the colors since they're very
-         * repetitive.
-         */
-
-        if (arg >= 30 && arg <= 39) { /* 8-16 color */
+        if (arg >= 30 && arg <= 38) {
                 f->c.fg = arg;
                 return;
-        } else if (arg >= 40 && arg <= 49) {
+        }
+
+        if (arg >= 40 && arg <= 48) {
                 f->c.bg = arg;
                 return;
         }
@@ -360,25 +357,31 @@ void thandlegraphicmode(struct frame *f, long arg, int *mode)
         case 0:
                 f->c.fg = -1;
                 f->c.bg = -1;
-                *mode = 0;
+                f->c.mode = 0;
                 break;
         case 1: /* Bold */
-                *mode |= GLYPH_BOLD;
+                f->c.mode |= GLYPH_BOLD;
                 break;
         case 22: /* Turn off bold */
-                *mode &= ~GLYPH_BOLD;
+                f->c.mode &= ~GLYPH_BOLD;
                 break;
         case 4: /* Underline */
-                *mode |= GLYPH_UNDERLINE;
+                f->c.mode |= GLYPH_UNDERLINE;
                 break;
         case 24: /* Turn off underline */
-                *mode &= ~GLYPH_UNDERLINE;
+                f->c.mode &= ~GLYPH_UNDERLINE;
                 break;
         case 7:
-                *mode |= GLYPH_INVERSE;
+                f->c.mode |= GLYPH_INVERSE;
                 break;
         case 27:
-                *mode &= ~GLYPH_INVERSE;
+                f->c.mode &= ~GLYPH_INVERSE;
+                break;
+        case 39:
+                f->c.fg = -1;
+                break;
+        case 99:
+                f->c.bg = -1;
                 break;
         default:
                 fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
@@ -395,7 +398,7 @@ void thandlegraphicmode(struct frame *f, long arg, int *mode)
 void tsetattr(struct frame *f)
 {
         if (!f->csi.narg) {
-                thandlegraphicmode(f, 0, &f->c.mode);
+                thandlegraphicmode(f, 0);
                 return;
         }
 
@@ -406,7 +409,7 @@ void tsetattr(struct frame *f)
         }
 
         for (int i = 0; i < f->csi.narg; i++)
-                thandlegraphicmode(f, f->csi.arg[i], &f->c.mode);
+                thandlegraphicmode(f, f->csi.arg[i]);
 }
 
 void tstrsequence(struct frame *f, unsigned char c)

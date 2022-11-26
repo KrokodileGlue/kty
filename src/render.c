@@ -320,9 +320,12 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         };
 
         /* TODO: Make default fg and other colors configurable. */
+        int _fg = g.fg;
+        int _bg = g.bg;
+
         struct color fg = (struct color){ 1, 1, 1 };
 
-        if (g.fg >= 30 && g.fg < 40) {
+        if (_fg >= 30 && _fg <= 39) {
                 fg = (struct color []){
                         { 0, 0, 0 },
                         { 1, 0, 0 },
@@ -333,20 +336,38 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                         { 0, 1, 1 },
                         { 1, 1, 1 },
                         { 1, 1, 1 },
-                }[g.fg - 30];
+                }[_fg - 30];
         }
 
-        if (g.fg >= 40) {
-                int FG = g.fg - 40;
+        if (_fg >= 40) {
+                int FG = _fg - 40;
                 int R = (FG >> 16) & 0xFF;
                 int G = (FG >> 8) & 0xFF;
                 int B = (FG >> 0) & 0xFF;
                 fg = (struct color){ (float)R / 255.0, (float)G / 255.0, (float)B / 255.0 };
         }
 
-        struct color col[] = { fg, fg, fg, fg, fg, fg };
-
         struct font *font = sprite->font;
+
+        struct color bg = (struct color []){
+                { 0, 0, 0 },
+                { 1, 0, 0 },
+                { 0, 1, 0 },
+                { 1, 1, 0 },
+                { 0, 0, 1 },
+                { 1, 0, 1 },
+                { 0, 1, 1 },
+                { 0.5, 0.5, 0.5 },
+                { 0.5, 0.5, 0.5 },
+        }[_bg - 40];
+
+        if (g.mode & GLYPH_INVERSE) {
+                struct color tmp = fg;
+                fg = bg;
+                bg = tmp;
+        }
+
+        struct color col[] = { fg, fg, fg, fg, fg, fg };
 
         memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
         memcpy(font->textures + font->num_glyphs_in_vbo * sizeof tex, tex, sizeof tex);
@@ -361,23 +382,13 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                                  x + f->w.cw * sx,
                                  (struct color){1, 1, 1});
 
-        if (g.bg >= 40)
+        if (_bg >= 40)
                 render_rectangle(f,
                                  y + f->w.ch * sy,
                                  y - LINE_SPACING * sy,
                                  x + f->w.cw * sx,
                                  x,
-                                 (struct color []){
-                                         { 0, 0, 0 },
-                                         { 1, 0, 0 },
-                                         { 0, 1, 0 },
-                                         { 1, 1, 0 },
-                                         { 0, 0, 1 },
-                                         { 1, 0, 1 },
-                                         { 0, 1, 1 },
-                                         { 0.5, 0.5, 0.5 },
-                                         { 0.5, 0.5, 0.5 },
-                                 }[g.bg - 40]);
+                                 bg);
 
         return 0;
 }
