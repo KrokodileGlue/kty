@@ -81,6 +81,7 @@ struct frame *frame_new(GLFWwindow *window, char **env)
         f->master = master;
         f->mode = MODE_CURSOR_VISIBLE;
         f->glfw_window = window;
+        f->c.fg = f->c.bg = -1;
 
         return f;
 }

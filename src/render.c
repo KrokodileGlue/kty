@@ -255,6 +255,42 @@ void render_rectangle(struct frame *f, float n, float s, float w, float e, struc
         f->font.num_decoration++;
 }
 
+struct color get_color_from_index(int i, struct color regular)
+{
+        struct color c = regular;
+
+        if (i >= 0 && i <= 7) {
+                c = (struct color []) {
+                        { 0, 0, 0 },
+                        { 1, 0, 0 },
+                        { 0, 1, 0 },
+                        { 1, 1, 0 },
+                        { 0, 0, 1 },
+                        { 1, 0, 1 },
+                        { 0, 1, 1 },
+                        { 1, 1, 1 },
+                }[i];
+        } else if (i >= 8 && i <= 255 - 16) {
+                i -= 8;
+                int B = i % 6;
+                int G = (i / 6) % 6;
+                int R = (i / 36) % 6;
+                c = (struct color){ R / 6.0, G / 6.0, B / 6.0 };
+        } else if (i >= 255 - 16 && i <= 255) {
+                i -= 255 - 16;
+                float res = i / 24.0;
+                c = (struct color){ res, res, res };
+        } else if (i >= 256) {
+                i -= 256;
+                int R = (i >> 16) & 0xFF;
+                int G = (i >> 8) & 0xFF;
+                int B = (i >> 0) & 0xFF;
+                c = (struct color){ (float)R / 255.0, (float)G / 255.0, (float)B / 255.0 };
+        }
+
+        return c;
+}
+
 int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 {
         uint32_t c = g.c;
@@ -320,46 +356,9 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         };
 
         /* TODO: Make default fg and other colors configurable. */
-        int _fg = g.fg;
-        int _bg = g.bg;
 
-        struct color fg = (struct color){ 1, 1, 1 };
-
-        if (_fg >= 30 && _fg <= 39) {
-                fg = (struct color []){
-                        { 0, 0, 0 },
-                        { 1, 0, 0 },
-                        { 0, 1, 0 },
-                        { 1, 1, 0 },
-                        { 0, 0, 1 },
-                        { 1, 0, 1 },
-                        { 0, 1, 1 },
-                        { 1, 1, 1 },
-                        { 1, 1, 1 },
-                }[_fg - 30];
-        }
-
-        if (_fg >= 40) {
-                int FG = _fg - 40;
-                int R = (FG >> 16) & 0xFF;
-                int G = (FG >> 8) & 0xFF;
-                int B = (FG >> 0) & 0xFF;
-                fg = (struct color){ (float)R / 255.0, (float)G / 255.0, (float)B / 255.0 };
-        }
-
-        struct font *font = sprite->font;
-
-        struct color bg = (struct color []){
-                { 0, 0, 0 },
-                { 1, 0, 0 },
-                { 0, 1, 0 },
-                { 1, 1, 0 },
-                { 0, 0, 1 },
-                { 1, 0, 1 },
-                { 0, 1, 1 },
-                { 0.5, 0.5, 0.5 },
-                { 0.5, 0.5, 0.5 },
-        }[_bg - 40];
+        struct color fg = get_color_from_index(g.fg, (struct color){ 1, 1, 1 });
+        struct color bg = get_color_from_index(g.bg, (struct color){ 0, 0, 0 });
 
         if (g.mode & GLYPH_INVERSE) {
                 struct color tmp = fg;
@@ -369,10 +368,19 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 
         struct color col[] = { fg, fg, fg, fg, fg, fg };
 
+        struct font *font = sprite->font;
+
         memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
         memcpy(font->textures + font->num_glyphs_in_vbo * sizeof tex, tex, sizeof tex);
         memcpy(font->colors + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
         font->num_glyphs_in_vbo++;
+
+        render_rectangle(f,
+                y + f->w.ch * sy,
+                y - LINE_SPACING * sy,
+                x + f->w.cw * sx,
+                x,
+                bg);
 
         if (g.mode & GLYPH_UNDERLINE)
                 render_rectangle(f,
@@ -381,14 +389,6 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                                  x,
                                  x + f->w.cw * sx,
                                  (struct color){1, 1, 1});
-
-        if (_bg >= 40)
-                render_rectangle(f,
-                                 y + f->w.ch * sy,
-                                 y - LINE_SPACING * sy,
-                                 x + f->w.cw * sx,
-                                 x,
-                                 bg);
 
         return 0;
 }
@@ -424,14 +424,15 @@ void render(struct frame *f)
 
                 f->font.num_decoration = 0;
 
-                /* Add the cursor to the decoration VBO. */
-                if (f->mode & MODE_CURSOR_VISIBLE)
-                        render_cursor(f);
-
                 for (int i = 0; i < f->row; i++)
                         for (int j = 0; j < f->col; j++)
                                 if (f->line[i][j].c)
                                         render_glyph(f, f->line[i][j], j, i);
+
+                /* Add the cursor to the decoration VBO. */
+                if (f->mode & MODE_CURSOR_VISIBLE)
+                        render_cursor(f);
+
         }
 
         /* Render the quads. */

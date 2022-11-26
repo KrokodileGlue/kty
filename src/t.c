@@ -344,12 +344,12 @@ void tputc(struct frame *f, uint32_t c)
 void thandlegraphicmode(struct frame *f, long arg)
 {
         if (arg >= 30 && arg <= 38) {
-                f->c.fg = arg;
+                f->c.fg = arg - 30;
                 return;
         }
 
         if (arg >= 40 && arg <= 48) {
-                f->c.bg = arg;
+                f->c.bg = arg - 40;
                 return;
         }
 
@@ -380,7 +380,7 @@ void thandlegraphicmode(struct frame *f, long arg)
         case 39:
                 f->c.fg = -1;
                 break;
-        case 99:
+        case 49:
                 f->c.bg = -1;
                 break;
         default:
@@ -392,7 +392,7 @@ void thandlegraphicmode(struct frame *f, long arg)
 #define TRUECOLOR(r,g,b) ((\
                 (((r) & 0xFF) << 16) |\
                 (((g) & 0xFF) << 8) |\
-                (((b) & 0xFF) << 0)) + 40\
+                (((b) & 0xFF) << 0)) + 256\
                 )
 
 void tsetattr(struct frame *f)
@@ -403,8 +403,26 @@ void tsetattr(struct frame *f)
         }
 
         if (f->csi.narg == 5 && f->csi.arg[0] == 38 && f->csi.arg[1] == 2) {
-                /* This is a truecolor sequence. */
+                /* This is a truecolor fg sequence. */
                 f->c.fg = TRUECOLOR(f->csi.arg[2], f->csi.arg[3], f->csi.arg[4]);
+                return;
+        }
+
+        if (f->csi.narg == 5 && f->csi.arg[0] == 48 && f->csi.arg[1] == 2) {
+                /* This is a truecolor bg sequence. */
+                f->c.bg = TRUECOLOR(f->csi.arg[2], f->csi.arg[3], f->csi.arg[4]);
+                return;
+        }
+
+        if (f->csi.narg == 3 && f->csi.arg[0] == 38 && f->csi.arg[1] == 5) {
+                /* This is a 256 fg sequence. */
+                f->c.fg = f->csi.arg[2];
+                return;
+        }
+
+        if (f->csi.narg == 3 && f->csi.arg[0] == 48 && f->csi.arg[1] == 5) {
+                /* This is a 256 bg sequence. */
+                f->c.bg = f->csi.arg[2];
                 return;
         }
 
