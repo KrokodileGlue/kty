@@ -51,12 +51,14 @@ void tprintc(struct frame *f, uint32_t c)
 {
         _printf("Printing U+%x/%c at %d,%d\n", c, c, f->c.x, f->c.y);
         f->dirty_display = 1;
-        f->line[f->c.y][f->c.x] = (struct glyph){
+        f->line[f->c.y][f->c.x++] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0),
                 .fg = f->c.fg,
                 .bg = f->c.bg,
         };
+        if (wcwidth(c) > 1)
+                f->line[f->c.y][f->c.x++] = (struct glyph){ .mode = GLYPH_DUMMY };
 }
 
 void tinsertblank(struct frame *f, int n)
@@ -337,7 +339,6 @@ void tputc(struct frame *f, uint32_t c)
                         resetesc(f);
         } else if (f->c.x < f->col) {
                 tprintc(f, c);
-                f->c.x += wcwidth(c);
         }
 }
 

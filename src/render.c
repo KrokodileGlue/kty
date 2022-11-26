@@ -287,6 +287,8 @@ struct color get_color_from_index(int i, struct color regular)
 
 int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
 {
+        if (g.mode & GLYPH_DUMMY) return 0;
+
         uint32_t c = g.c;
         struct sprite *sprite = get_sprite(f, c);
 

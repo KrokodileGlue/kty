@@ -9,26 +9,27 @@
 
 enum {
         BEL = 0x07,
-        BS = 0x08,
-        HT = 0x09,
-        LF = 0x0A,
-        VT = 0x0B,
-        FF = 0x0C,
-        CR = 0x0D,
+        BS  = 0x08,
+        HT  = 0x09,
+        LF  = 0x0A,
+        VT  = 0x0B,
+        FF  = 0x0C,
+        CR  = 0x0D,
         ESC = 0x1B,
         DEL = 0x7F,
 };
 
 enum {
-        GLYPH_WRAP = 1,
+        GLYPH_WRAP      = 1,
         GLYPH_UNDERLINE = 1 << 1,
-        GLYPH_BOLD = 1 << 2,
-        GLYPH_ITALIC = 1 << 3,
-        GLYPH_DIM = 1 << 4,
-        GLYPH_BLINKING = 1 << 5,
-        GLYPH_INVERSE = 1 << 5,
-        GLYPH_WIDE = 1 << 6,
-        GLYPH_MAX = 1 << 7,
+        GLYPH_BOLD      = 1 << 2,
+        GLYPH_ITALIC    = 1 << 3,
+        GLYPH_DIM       = 1 << 4,
+        GLYPH_BLINKING  = 1 << 5,
+        GLYPH_INVERSE   = 1 << 5,
+        GLYPH_WIDE      = 1 << 6,
+        GLYPH_DUMMY     = 1 << 7,
+        GLYPH_MAX       = GLYPH_DUMMY,
 };
 
 struct glyph {
@@ -73,8 +74,8 @@ struct font {
 };
 
 enum {
-        CURSOR_DEFAULT = 0,
-        CURSOR_ORIGIN = 1,
+        CURSOR_DEFAULT  = 0,
+        CURSOR_ORIGIN   = 1,
         CURSOR_WRAPNEXT = 1 << 1,
 };
 
@@ -109,17 +110,17 @@ struct font_renderer {
 };
 
 enum {
-        ESC_START = 1,
-        ESC_CSI = 1 << 1,
-        ESC_STR = 1 << 2,
-        ESC_STR_END = 1 << 3,
+        ESC_START      = 1,
+        ESC_CSI        = 1 << 1,
+        ESC_STR        = 1 << 2,
+        ESC_STR_END    = 1 << 3,
         ESC_ALTCHARSET = 1 << 4,
 };
 
 enum {
         MODE_CURSOR_VISIBLE = 1,
-        MODE_CRLF = 1 << 1,
-        MODE_APPCURSOR = 1 << 2,
+        MODE_CRLF           = 1 << 1,
+        MODE_APPCURSOR      = 1 << 2,
 };
 
 struct frame {
