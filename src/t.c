@@ -211,7 +211,7 @@ void tstrhandle(struct frame *f)
                                 frame_title(f, f->esc_str.arg[1]);
                         break;
                 default:
-                        _printf("\x1b[34mUnhandled `[` style string escape sequence\n");
+                        _printf("\x1b[34mUnhandled `[` style string escape sequence\x1b[39m\n");
                         break;
                 }
                 break;
@@ -339,6 +339,74 @@ void tputc(struct frame *f, uint32_t c)
                 tprintc(f, c);
                 f->c.x += wcwidth(c);
         }
+}
+
+void thandlegraphicmode(struct frame *f, long arg, int *mode)
+{
+        /*
+         * First let's just handle the colors since they're very
+         * repetitive.
+         */
+
+        if (arg >= 30 && arg <= 39) { /* 8-16 color */
+                f->c.fg = arg;
+                return;
+        } else if (arg >= 40 && arg <= 49) {
+                f->c.bg = arg;
+                return;
+        }
+
+        switch (arg) {
+        case 0:
+                f->c.fg = -1;
+                f->c.bg = -1;
+                *mode = 0;
+                break;
+        case 1: /* Bold */
+                *mode |= GLYPH_BOLD;
+                break;
+        case 22: /* Turn off bold */
+                *mode &= ~GLYPH_BOLD;
+                break;
+        case 4: /* Underline */
+                *mode |= GLYPH_UNDERLINE;
+                break;
+        case 24: /* Turn off underline */
+                *mode &= ~GLYPH_UNDERLINE;
+                break;
+        case 7:
+                *mode |= GLYPH_INVERSE;
+                break;
+        case 27:
+                *mode &= ~GLYPH_INVERSE;
+                break;
+        default:
+                fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
+                break;
+        }
+}
+
+#define TRUECOLOR(r,g,b) ((\
+                (((r) & 0xFF) << 16) |\
+                (((g) & 0xFF) << 8) |\
+                (((b) & 0xFF) << 0)) + 40\
+                )
+
+void tsetattr(struct frame *f)
+{
+        if (!f->csi.narg) {
+                thandlegraphicmode(f, 0, &f->c.mode);
+                return;
+        }
+
+        if (f->csi.narg == 5 && f->csi.arg[0] == 38 && f->csi.arg[1] == 2) {
+                /* This is a truecolor sequence. */
+                f->c.fg = TRUECOLOR(f->csi.arg[2], f->csi.arg[3], f->csi.arg[4]);
+                return;
+        }
+
+        for (int i = 0; i < f->csi.narg; i++)
+                thandlegraphicmode(f, f->csi.arg[i], &f->c.mode);
 }
 
 void tstrsequence(struct frame *f, unsigned char c)

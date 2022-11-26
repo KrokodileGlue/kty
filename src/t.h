@@ -17,5 +17,6 @@ void tdeletechar(struct frame *f, int n);
 void tinsertblank(struct frame *f, int n);
 void tstrsequence(struct frame *f, unsigned char c);
 void tstrhandle(struct frame *f);
+void tsetattr(struct frame *f);
 
 #endif

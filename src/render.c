@@ -322,7 +322,7 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
         /* TODO: Make default fg and other colors configurable. */
         struct color fg = (struct color){ 1, 1, 1 };
 
-        if (g.fg >= 30) {
+        if (g.fg >= 30 && g.fg < 40) {
                 fg = (struct color []){
                         { 0, 0, 0 },
                         { 1, 0, 0 },
@@ -334,6 +334,14 @@ int render_glyph(struct frame *f, struct glyph g, int x0, int y0)
                         { 1, 1, 1 },
                         { 1, 1, 1 },
                 }[g.fg - 30];
+        }
+
+        if (g.fg >= 40) {
+                int FG = g.fg - 40;
+                int R = (FG >> 16) & 0xFF;
+                int G = (FG >> 8) & 0xFF;
+                int B = (FG >> 0) & 0xFF;
+                fg = (struct color){ (float)R / 255.0, (float)G / 255.0, (float)B / 255.0 };
         }
 
         struct color col[] = { fg, fg, fg, fg, fg, fg };

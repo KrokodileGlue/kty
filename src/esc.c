@@ -30,7 +30,7 @@ void csiparse(struct frame *f)
                 if (v == LONG_MAX || v == LONG_MIN) v = -1;
                 f->csi.arg[f->csi.narg++] = v;
                 p = np;
-                if (*p != ';' || f->csi.narg == ESC_ARG_SIZE)
+                if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
                         break;
                 p++;
         }
@@ -46,51 +46,6 @@ void csiparse(struct frame *f)
         snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "mode %c mode %d\n", f->csi.mode[0], f->csi.mode[1]);
         _printf("%s", buf);
 #endif
-}
-
-void get_csi_graphic_mode(struct frame *f, long arg, int *mode)
-{
-        /*
-         * First let's just handle the colors since they're very
-         * repetitive.
-         */
-
-        if (arg >= 30 && arg <= 39) { /* 8-16 color */
-                f->c.fg = arg;
-                return;
-        } else if (arg >= 40 && arg <= 49) {
-                f->c.bg = arg;
-                return;
-        }
-
-        switch (arg) {
-        case 0:
-                f->c.fg = -1;
-                f->c.bg = -1;
-                *mode = 0;
-                break;
-        case 1: /* Bold */
-                *mode |= GLYPH_BOLD;
-                break;
-        case 22: /* Turn off bold */
-                *mode &= ~GLYPH_BOLD;
-                break;
-        case 4: /* Underline */
-                *mode |= GLYPH_UNDERLINE;
-                break;
-        case 24: /* Turn off underline */
-                *mode &= ~GLYPH_UNDERLINE;
-                break;
-        case 7:
-                *mode |= GLYPH_INVERSE;
-                break;
-        case 27:
-                *mode &= ~GLYPH_INVERSE;
-                break;
-        default:
-                fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
-                break;
-        }
 }
 
 /*
@@ -178,12 +133,7 @@ void csihandle(struct frame *f)
                 tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
         case 'm':
-                if (!f->csi.narg) {
-                        get_csi_graphic_mode(f, 0, &f->c.mode);
-                } else {
-                        for (int i = 0; i < f->csi.narg; i++)
-                                get_csi_graphic_mode(f, f->csi.arg[i], &f->c.mode);
-                }
+                tsetattr(f);
                 break;
         case 'M': /* DL - Delete n lines */
                 tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
