@@ -16,6 +16,10 @@
 #define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
 #define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
 
+struct color {
+        float r, g, b;
+};
+
 void _printf(const char *func, const char *fmt, ...);
 
 #ifdef DEBUG

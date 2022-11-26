@@ -195,10 +195,6 @@ struct frame {
         } cursor_style;
 };
 
-struct color {
-        GLfloat r, g, b;
-};
-
 struct frame *frame_new(GLFWwindow *window, char **env);
 void frame_title(struct frame *f, const char *title);
 
