@@ -398,12 +398,31 @@ void render_cursor(struct frame *f)
         float n = 1 - (f->w.ch * y) * sy - LINE_SPACING * y * sy;
         float s = n - f->w.ch * sy - LINE_SPACING * sy;
         float e = w + f->w.cw * sx;
+        /* TODO: Default cursor color customization. */
+        struct color c = (struct color){ 0, 0.5, 0.5 };
 
-        /* Thicken the cursor. */
-        if (f->line[y][x].mode & GLYPH_WIDE)
-                e += f->w.cw * sx;
+        switch (f->cursor_style) {
+                case CURSOR_STYLE_BLINKING_BLOCK:
+                        /* TODO: Implement blinking block cursor. */
+                case CURSOR_STYLE_DEFAULT:
+                case CURSOR_STYLE_STEADY_BLOCK:
+                        /* Thicken the cursor. */
+                        if (f->line[y][x].mode & GLYPH_WIDE)
+                                e += f->w.cw * sx;
+                        break;
+                case CURSOR_STYLE_BLINKING_UNDERLINE:
+                case CURSOR_STYLE_STEADY_UNDERLINE:
+                        n = s + 3 * sy;
+                        c = (struct color){ 1, 1, 1 };
+                        break;
+                case CURSOR_STYLE_BLINKING_BAR:
+                case CURSOR_STYLE_STEADY_BAR:
+                        e = w + 2 * sx;
+                        c = (struct color){ 1, 1, 1 };
+                        break;
+        }
 
-        render_rectangle(f, n, s, w, e, (struct color){ 0, 0.5, 0.5});
+        render_rectangle(f, n, s, w, e, c);
 }
 
 void render(struct frame *f)

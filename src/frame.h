@@ -181,6 +181,17 @@ struct frame {
         char *title;
         int icharset;
         int focused;
+
+        enum {
+                CURSOR_STYLE_BLINKING_BLOCK,
+                CURSOR_STYLE_DEFAULT,
+                CURSOR_STYLE_STEADY_BLOCK,
+                CURSOR_STYLE_BLINKING_UNDERLINE,
+                CURSOR_STYLE_STEADY_UNDERLINE,
+                CURSOR_STYLE_BLINKING_BAR,
+                CURSOR_STYLE_STEADY_BAR,
+                CURSOR_STYLE_MAX = CURSOR_STYLE_STEADY_BAR,
+        } cursor_style;
 };
 
 struct color {

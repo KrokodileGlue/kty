@@ -119,7 +119,7 @@ void csihandle(struct frame *f)
                         tclearregion(f, 0, 0, f->col - 1, f->row - 1);
                         break;
                 default:
-                        fprintf(stderr, "Unknown clear argument %ld\n", f->csi.arg[0]);
+                        _printf("Unknown clear argument %ld\n", f->csi.arg[0]);
                         break;
                 }
                 break;
@@ -156,14 +156,20 @@ void csihandle(struct frame *f)
                              f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
                 break;
         case ' ':
+                if (f->csi.arg[0] < 0 || f->csi.arg[0] > CURSOR_STYLE_MAX)
+                        goto unhandled;
                 if (f->csi.mode[1] == 'q') {
-                        /* TODO: Set cursor style. */
+                        f->cursor_style = f->csi.arg[0];
+                        f->dirty_display = 1;
+                        break;
                 }
-                break;
         default:
-                _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
-                break;
+                goto unhandled;
         }
+
+        return;
+unhandled:
+        _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
 }
 
 void resetcsi(struct frame *f)
