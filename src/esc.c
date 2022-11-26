@@ -30,6 +30,11 @@ void csiparse(struct frame *f)
                 if (v == LONG_MAX || v == LONG_MIN) v = -1;
                 f->csi.arg[f->csi.narg++] = v;
                 p = np;
+
+                /*
+                 * TODO: Investigate why some applications seem to use : instad
+                 * of ; for some sequences.
+                 */
                 if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
                         break;
                 p++;
