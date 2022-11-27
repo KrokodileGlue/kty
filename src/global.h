@@ -23,7 +23,6 @@ struct global {
 int global_init(struct global *k, char **env, void (*)(char *));
 int global_notify_title_change(struct frame *f);
 int global_load_fonts(struct global *k);
-int global_init_gl_resources(struct global *k);
 int global_render(struct global *k);
 
 #endif

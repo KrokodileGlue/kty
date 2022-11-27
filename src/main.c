@@ -330,9 +330,6 @@ int main(int argc, char **argv, char **env)
         glfwSetKeyCallback(window, key_callback);
         glfwSetWindowSizeCallback(window, window_size_callback);
 
-        k = calloc(1, sizeof *k);
-        global_init(k, env, window_title_callback);
-
         /* Initialize GLEW. */
         GLenum glew_status = glewInit();
 
@@ -346,15 +343,15 @@ int main(int argc, char **argv, char **env)
                 return 1;
         }
 
+        k = calloc(1, sizeof *k);
+        global_init(k, env, window_title_callback);
+
         /* Load fonts. */
         if (global_load_fonts(k)) return 1;
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
-
-        /* Create the VBO, shader program, etc. */
-        if (global_init_gl_resources(k)) return 1;
 
         pthread_t shell_reader;
         pthread_create(&shell_reader, NULL, read_shell, k);

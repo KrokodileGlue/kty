@@ -20,15 +20,87 @@
 #include "util.h"               /* color, LINE_SPACING, NUM_GLYPH, FONT_... */
 #include "utf8.h"
 
+int init_gl_resources(struct global *f)
+{
+        const char vs[] = "#version 120\n\
+attribute vec2 coord;\n\
+attribute vec3 decoration_color;\n\
+attribute vec3 tex_color;\n\
+varying vec3 dec_color;\n\
+varying vec3 tcolor;\n\
+void main(void) {\n\
+        gl_Position = vec4(coord.xy, 0, 1);\n\
+        dec_color = decoration_color;\n\
+        tcolor = tex_color;\n\
+}";
+
+        const char fs[] = "#version 120\n\
+varying vec3 dec_color;\n\
+varying vec3 tcolor;\n\
+uniform sampler2D tex;\n\
+uniform int is_solid;\n\
+uniform int is_color;\n\
+void main(void) {\n\
+        if (is_solid == 1) {\n\
+                gl_FragColor = vec4(dec_color, 1);\n\
+        } else if (is_color == 1) {\n\
+                //gl_FragColor = vec4(1, 1, 0.5, 1);\n\
+                gl_FragColor = texture2D(tex, dec_color.xy);\n\
+                //gl_FragColor = vec4(dec_color.xy / 0.0625, 1, 1);\n\
+        } else {\n\
+                gl_FragColor = vec4(tcolor, texture2D(tex, dec_color.xy).a);\n\
+        }\n\
+}";
+
+        /* Compile each shader. */
+        GLuint gvs = create_shader(vs, GL_VERTEX_SHADER);
+        GLuint gfs = create_shader(fs, GL_FRAGMENT_SHADER);
+
+        if (!gvs || !gfs) return 1;
+
+        /* Create the program and link the shaders. */
+        f->font.program = glCreateProgram();
+        glAttachShader(f->font.program, gvs);
+        glAttachShader(f->font.program, gfs);
+        glLinkProgram(f->font.program);
+        glUseProgram(f->font.program);
+
+        /* Now check that everything compiled and linked okay. */
+        GLint link_ok = GL_FALSE;
+        glGetProgramiv(f->font.program, GL_LINK_STATUS, &link_ok);
+
+        if (!link_ok) {
+                fprintf(stderr, "glLinkProgram:");
+                print_gl_error_log(f->font.program);
+                return 1;
+        }
+
+        f->font.attribute_coord = bind_attribute_to_program(f->font.program, "coord");
+        f->font.attribute_decoration_color = bind_attribute_to_program(f->font.program, "decoration_color");
+        f->font.attribute_color = bind_attribute_to_program(f->font.program, "tex_color");
+
+        f->font.uniform_tex = bind_uniform_to_program(f->font.program, "tex");
+        f->font.uniform_is_solid = bind_uniform_to_program(f->font.program, "is_solid");
+        f->font.uniform_is_color = bind_uniform_to_program(f->font.program, "is_color");
+
+        /* Enabling blending allows us to use alpha textures. */
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        return 0;
+}
+
 int global_init(struct global *k, char **env, void (*window_title_callback)(char *))
 {
-        struct frame *f = frame_new(env, &k->font);
-
         /* Initialize FreeType. */
         if (FT_Init_FreeType(&k->font.ft)) {
                 fprintf(stderr, "Could not init FreeType\n");
                 return 1;
         }
+
+        init_gl_resources(k);
+
+        struct frame *f = frame_new(env, &k->font);
 
         f->focused = 1;
         k->frame[k->nframe++] = f;
@@ -136,76 +208,6 @@ int frame_load_fonts(struct frame *f)
 int global_load_fonts(struct global *k)
 {
         frame_load_fonts(k->frame[0]);
-        return 0;
-}
-
-int global_init_gl_resources(struct global *f)
-{
-        const char vs[] = "#version 120\n\
-attribute vec2 coord;\n\
-attribute vec3 decoration_color;\n\
-attribute vec3 tex_color;\n\
-varying vec3 dec_color;\n\
-varying vec3 tcolor;\n\
-void main(void) {\n\
-        gl_Position = vec4(coord.xy, 0, 1);\n\
-        dec_color = decoration_color;\n\
-        tcolor = tex_color;\n\
-}";
-
-        const char fs[] = "#version 120\n\
-varying vec3 dec_color;\n\
-varying vec3 tcolor;\n\
-uniform sampler2D tex;\n\
-uniform int is_solid;\n\
-uniform int is_color;\n\
-void main(void) {\n\
-        if (is_solid == 1) {\n\
-                gl_FragColor = vec4(dec_color, 1);\n\
-        } else if (is_color == 1) {\n\
-                //gl_FragColor = vec4(1, 1, 0.5, 1);\n\
-                gl_FragColor = texture2D(tex, dec_color.xy);\n\
-                //gl_FragColor = vec4(dec_color.xy / 0.0625, 1, 1);\n\
-        } else {\n\
-                gl_FragColor = vec4(tcolor, texture2D(tex, dec_color.xy).a);\n\
-        }\n\
-}";
-
-        /* Compile each shader. */
-        GLuint gvs = create_shader(vs, GL_VERTEX_SHADER);
-        GLuint gfs = create_shader(fs, GL_FRAGMENT_SHADER);
-
-        if (!gvs || !gfs) return 1;
-
-        /* Create the program and link the shaders. */
-        f->font.program = glCreateProgram();
-        glAttachShader(f->font.program, gvs);
-        glAttachShader(f->font.program, gfs);
-        glLinkProgram(f->font.program);
-        glUseProgram(f->font.program);
-
-        /* Now check that everything compiled and linked okay. */
-        GLint link_ok = GL_FALSE;
-        glGetProgramiv(f->font.program, GL_LINK_STATUS, &link_ok);
-
-        if (!link_ok) {
-                fprintf(stderr, "glLinkProgram:");
-                print_gl_error_log(f->font.program);
-                return 1;
-        }
-
-        f->font.attribute_coord = bind_attribute_to_program(f->font.program, "coord");
-        f->font.attribute_decoration_color = bind_attribute_to_program(f->font.program, "decoration_color");
-        f->font.attribute_color = bind_attribute_to_program(f->font.program, "tex_color");
-
-        f->font.uniform_tex = bind_uniform_to_program(f->font.program, "tex");
-        f->font.uniform_is_solid = bind_uniform_to_program(f->font.program, "is_solid");
-        f->font.uniform_is_color = bind_uniform_to_program(f->font.program, "is_color");
-
-        /* Enabling blending allows us to use alpha textures. */
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
         return 0;
 }
 
