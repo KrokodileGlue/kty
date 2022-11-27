@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <time.h>
 #include <inttypes.h>
@@ -17,10 +18,24 @@
 
 #include <GLFW/glfw3.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <freetype/tttables.h>
+
+#include "gl.h"
 #include "util.h"
 #include "frame.h"
+#include "t.h"
+#include "esc.h"
+#include "utf8.h"
+#include "font.h"
+#include "render.h"
+#include "global.h"
+#include "window.h"
 
-struct frame *frame_new(GLFWwindow *window, char **env)
+extern struct global *k;
+
+struct frame *frame_new(char **env, struct font_renderer *r)
 {
         /* Set up the PTY. */
         int master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -80,8 +95,9 @@ struct frame *frame_new(GLFWwindow *window, char **env)
 
         f->master = master;
         f->mode = MODE_CURSOR_VISIBLE;
-        f->glfw_window = window;
         f->c.fg = f->c.bg = -1;
+        f->k = k;
+        f->font = r;
 
         return f;
 }
@@ -91,5 +107,5 @@ void frame_title(struct frame *f, const char *title)
         free(f->title);
         f->title = malloc(strlen(title) + 1); /* TODO: xmalloc */
         strcpy(f->title, title);
-        if (f->focused) glfwSetWindowTitle(f->glfw_window, f->title);
+        global_notify_title_change(f);
 }

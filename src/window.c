@@ -1,6 +1,8 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <stdbool.h>
 #include <time.h>
 #include <inttypes.h>
@@ -17,19 +19,27 @@
 
 #include <GLFW/glfw3.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <freetype/tttables.h>
+
+#include "gl.h"
 #include "util.h"
 #include "frame.h"
-#include "gl.h"
 #include "t.h"
+#include "esc.h"
 #include "utf8.h"
-#include "window.h"
+#include "font.h"
+#include "render.h"
+#include "global.h"
 
-extern struct frame *k;
+extern struct global *k;
 
 void *read_shell(void *arg)
 {
         (void)arg;
-        struct frame *f = k;
+        /* TODO */
+        struct frame *f = k->frame[0];
 
         /* TODO: Put these into the frame. */
         static char buf[BUFSIZ];
@@ -56,10 +66,14 @@ void *read_shell(void *arg)
 void character_callback(GLFWwindow *window, uint32_t c)
 {
         (void)window;
+
+        /* TODO */
+        struct frame *f = k->focus;
+
         uint8_t buf[4];
         unsigned len = 0;
         utf8encode(c, buf, &len);
-        write(k->master, buf, len);
+        write(f->master, buf, len);
 }
 
 static struct key {
@@ -267,6 +281,8 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 {
         (void)window, (void)mods, (void)scancode;
 
+        struct frame *f = k->focus;
+
         if (action == GLFW_RELEASE) return;
 
         /*
@@ -276,12 +292,12 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
          */
 
         if (key >= 'A' && key <= 'Z' && mods & GLFW_MOD_CONTROL) {
-                write(k->master, (char []){ key - 'A' + 1 }, 1);
+                write(f->master, (char []){ key - 'A' + 1 }, 1);
                 return;
         }
 
         if (key >= 32 && key <= 126 && mods & GLFW_MOD_ALT) {
-                write(k->master, (char []){ 0x1b, tolower(key) }, 2);
+                write(f->master, (char []){ 0x1b, tolower(key) }, 2);
                 return;
         }
 
@@ -296,10 +312,10 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                         break;
                 }
 
-                if (keys[i].appcursor < 0 && !(k->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor < 0 && !(f->mode & MODE_APPCURSOR))
                         continue;
 
-                if (keys[i].appcursor > 0 && (k->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor > 0 && (f->mode & MODE_APPCURSOR))
                         continue;
 
                 s = keys[i].s;
@@ -308,7 +324,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (s) _printf("Key string \e[36m^[%s\e[0m\n", s + 1);
 
-        if (s) write(k->master, s, strlen(s));
+        if (s) write(f->master, s, strlen(s));
 }
 
 void window_size_callback(GLFWwindow *window, int width, int height)
@@ -321,15 +337,20 @@ void window_size_callback(GLFWwindow *window, int width, int height)
          */
 
         (void)window;
-        k->w.width = width, k->w.height = height;
-        tresize(k, width / k->w.cw, height / (k->w.ch + LINE_SPACING));
+
+        /* TODO */
+        struct frame *f = k->focus;
+
+        f->w.width = width, f->w.height = height;
+        f->top = 0, f->bot = height / (f->w.ch + LINE_SPACING) - 1;
+        tresize(f, width / f->w.cw, height / (f->w.ch + LINE_SPACING));
         glViewport(0, 0, width, height);
 
         struct winsize ws = {
-                .ws_col = k->col,
-                .ws_row = k->row,
+                .ws_col = f->col,
+                .ws_row = f->row,
         };
 
-        if (ioctl(k->master, TIOCSWINSZ, &ws) == -1)
+        if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
                 perror("ioctl");
 }

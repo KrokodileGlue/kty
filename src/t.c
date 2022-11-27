@@ -1,8 +1,15 @@
 #define _XOPEN_SOURCE 600
 
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <inttypes.h>
 #include <wchar.h>
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <freetype/tttables.h>
 
 /* TODO: Remove OpenGL specific stuff from the frame. */
 #include <GL/glew.h>
@@ -17,6 +24,9 @@
 #include "t.h"
 #include "esc.h"
 #include "utf8.h"
+#include "font.h"
+#include "render.h"
+#include "global.h"
 
 /* TODO: Make this a macro. */
 int limit(int *x, int y, int z)
@@ -44,13 +54,13 @@ void tresize(struct frame *f, int col, int row)
 
         f->col = col;
         f->row = row;
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
 }
 
 void tprintc(struct frame *f, uint32_t c)
 {
         _printf("Printing U+%x/%c at %d,%d\n", c, c, f->c.x, f->c.y);
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
         f->line[f->c.y][f->c.x++] = (struct glyph){
                 .c = c,
                 .mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0),
@@ -89,7 +99,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                                 .fg = -1,
                                 .bg = -1,
                         };
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
 }
 
 void tmoveto(struct frame *f, int x, int y)
@@ -109,7 +119,7 @@ void tmoveto(struct frame *f, int x, int y)
         f->c.state &= ~CURSOR_WRAPNEXT;
         f->c.x = limit(&x, 0, f->col - 1);
         f->c.y = limit(&y, miny, maxy);
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
 }
 
 void tmoveato(struct frame *f, int x, int y)
@@ -143,7 +153,7 @@ void tscrolldown(struct frame *f, int orig, int n)
                 f->line[i - n] = temp;
         }
 
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
 }
 
 void tscrollup(struct frame *f, int orig, int n)
@@ -158,7 +168,7 @@ void tscrollup(struct frame *f, int orig, int n)
                 f->line[i + n] = tmp;
         }
 
-        f->dirty_display = 1;
+        f->font->dirty_display = 1;
 }
 
 void tnewline(struct frame *f, int first_col)

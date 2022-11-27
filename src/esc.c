@@ -1,15 +1,26 @@
+#include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <GL/glew.h>
 #include <GL/gl.h>
 
 #include <GLFW/glfw3.h>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+#include <freetype/tttables.h>
+
+#include "gl.h"
 #include "util.h"
 #include "frame.h"
-#include "util.h"
-#include "esc.h"
 #include "t.h"
+#include "esc.h"
+#include "utf8.h"
+#include "font.h"
+#include "render.h"
+#include "global.h"
+#include "window.h"
 
 void csiparse(struct frame *f)
 {
@@ -160,7 +171,7 @@ void csihandle(struct frame *f)
                         goto unhandled;
                 if (f->csi.mode[1] == 'q') {
                         f->cursor_style = f->csi.arg[0];
-                        f->dirty_display = 1;
+                        f->font->dirty_display = 1;
                         break;
                 }
         default:
