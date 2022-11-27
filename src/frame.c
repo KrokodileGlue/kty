@@ -31,7 +31,6 @@
 #include "font.h"
 #include "render.h"
 #include "global.h"
-#include "window.h"
 
 extern struct global *k;
 

@@ -30,7 +30,6 @@
 #include "font.h"
 #include "render.h"
 #include "global.h"
-#include "window.h"
 
 int global_init(struct global *k, char **env, void (*window_title_callback)(char *))
 {
