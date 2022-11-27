@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
@@ -15,5 +14,3 @@ void _printf(const char *func, const char *fmt, ...)
         vfprintf(stdout, fmt, args);
         va_end(args);
 }
-
-#include "util.h"

@@ -1,32 +1,20 @@
 #define _XOPEN_SOURCE 600
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <inttypes.h>
-#include <wchar.h>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include <freetype/tttables.h>
-
-/* TODO: Remove OpenGL specific stuff from the frame. */
-#include <GL/glew.h>
-#include <GL/gl.h>
-
-/* TODO: Remove GLFW specific stuff from the frame. */
-#include <GLFW/glfw3.h>
-
-#include "gl.h"
-#include "util.h"
-#include "frame.h"
 #include "t.h"
-#include "esc.h"
-#include "utf8.h"
-#include "font.h"
-#include "render.h"
-#include "global.h"
+
+#include <inttypes.h>                  /* PRIx32 */
+#include <stdint.h>                    /* uint32_t */
+#include <stdio.h>                     /* fprintf, stderr */
+#include <stdlib.h>                    /* realloc, atoi, calloc */
+#include <string.h>                    /* memmove, memset */
+#include <wchar.h>                     /* wcwidth */
+
+#include "esc.h"                       /* resetcsi, resetesc, csihandle */
+#include "font.h"                      /* glyph, GLYPH_BOLD, GLYPH_DUMMY */
+#include "frame.h"                     /* frame, cursor, frame::(anonymous) */
+#include "render.h"                    /* font_renderer */
+#include "utf8.h"                      /* utf8decode, utf8encode */
+#include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
 
 /* TODO: Make this a macro. */
 int limit(int *x, int y, int z)

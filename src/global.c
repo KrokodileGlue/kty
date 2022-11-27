@@ -1,35 +1,24 @@
 #define _XOPEN_SOURCE 600
 
-#include <stdlib.h>
-#include <stdbool.h>
-#include <time.h>
-#include <inttypes.h>
-#include <wchar.h>
-#include <ctype.h>
-
-#include <unistd.h>
-#include <pthread.h> /* TODO: Windows support. */
-#include <fcntl.h>
-#include <sys/ioctl.h>
-
-#include <GL/glew.h>
-#include <GL/gl.h>
-
-#include <GLFW/glfw3.h>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include <freetype/tttables.h>
-
-#include "gl.h"
-#include "util.h"
-#include "frame.h"
-#include "t.h"
-#include "esc.h"
-#include "utf8.h"
-#include "font.h"
-#include "render.h"
 #include "global.h"
+
+#include <GL/glew.h>            /* GLfloat, glTexParameteri, GL_ARRAY_BU... */
+#include <freetype/freetype.h>  /* FT_GlyphSlotRec_, FT_FaceRec_, FT_Gly... */
+#include <freetype/ftimage.h>   /* FT_Bitmap */
+#include <freetype/fttypes.h>   /* FT_MAKE_TAG */
+#include <freetype/tttables.h>  /* FT_Load_Sfnt_Table */
+#include <inttypes.h>           /* uint32_t */
+#include <stdio.h>              /* fprintf, stderr, NULL */
+#include <stdlib.h>             /* calloc, abs */
+#include <string.h>             /* memcpy */
+#include <wchar.h>              /* wcwidth */
+#include "font.h"               /* font, glyph, GLYPH_DUMMY, GLYPH_INVERSE */
+#include "frame.h"              /* frame, window, frame_new, cursor, MOD... */
+#include "gl.h"                 /* bind_attribute_to_program, bind_unifo... */
+#include "render.h"             /* font_renderer */
+#include "sprite.h"             /* sprite */
+#include "util.h"               /* color, LINE_SPACING, NUM_GLYPH, FONT_... */
+#include "utf8.h"
 
 int global_init(struct global *k, char **env, void (*window_title_callback)(char *))
 {

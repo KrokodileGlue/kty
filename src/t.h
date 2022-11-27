@@ -1,6 +1,10 @@
 #ifndef T_H
 #define T_H
 
+#include <stdint.h>
+
+struct frame;
+
 int twrite(struct frame *f, const char *buf, int buflen);
 void tputc(struct frame *f, uint32_t c);
 void tcontrolcode(struct frame *f, uint32_t c);

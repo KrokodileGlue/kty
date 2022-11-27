@@ -1,6 +1,14 @@
 #ifndef FONT_H
 #define FONT_H
 
+#include <stdint.h>
+
+#include <GL/glew.h>
+#include <freetype/freetype.h>
+
+#include "util.h"
+#include "sprite.h"
+
 enum {
         GLYPH_WRAP      = 1 << 0,
         GLYPH_UNDERLINE = 1 << 1,
@@ -18,15 +26,6 @@ struct glyph {
         uint32_t c;
         int mode;
         int fg, bg;
-};
-
-struct sprite {
-        uint32_t c;
-        struct font *font;
-        FT_Glyph_Metrics metrics;
-        int bitmap_top;
-        float tex_coords[4];
-        int height;
 };
 
 struct font {

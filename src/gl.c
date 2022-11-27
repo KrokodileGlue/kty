@@ -1,11 +1,10 @@
-#include <stdlib.h>
-#include <stdio.h>
-
-#include <GL/glew.h>
-#include <GL/gl.h>
-
 #include "gl.h"
-#include "util.h"
+
+#include <GL/glew.h>  /* GLuint, GLint, GL_FALSE, GL_INFO_LOG_LENGTH */
+#include <stdio.h>    /* NULL */
+#include <stdlib.h>   /* exit, free, malloc */
+
+#include "util.h"     /* _printf */
 
 int print_gl_error_log(GLuint object)
 {

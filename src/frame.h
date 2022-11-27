@@ -1,7 +1,9 @@
 #ifndef FRAME_H
 #define FRAME_H
 
-#include <stdint.h>
+#include "util.h"
+
+struct font_renderer;
 
 enum {
         BEL = 0x07,

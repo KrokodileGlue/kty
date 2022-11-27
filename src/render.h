@@ -1,6 +1,13 @@
 #ifndef RENDER_H
 #define RENDER_H
 
+#include <GL/glew.h>
+#include <freetype/freetype.h>
+
+#include "font.h"
+#include "util.h"
+#include "sprite.h"
+
 struct font_renderer {
         /* FreeType */
         FT_Library ft;

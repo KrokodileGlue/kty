@@ -1,6 +1,14 @@
 #ifndef GLOBAL_H
 #define GLOBAL_H
 
+#include <GL/glew.h> // IWYU pragma: keep
+#include <GLFW/glfw3.h>
+
+#include "render.h"
+#include "util.h"
+
+struct frame;
+
 struct global {
         struct frame *frame[10];
         int nframe;

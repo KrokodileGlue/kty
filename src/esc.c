@@ -1,25 +1,15 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-
-#include <GL/glew.h>
-#include <GL/gl.h>
-
-#include <GLFW/glfw3.h>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
-#include <freetype/tttables.h>
-
-#include "gl.h"
-#include "util.h"
-#include "frame.h"
-#include "t.h"
 #include "esc.h"
-#include "utf8.h"
-#include "font.h"
-#include "render.h"
-#include "global.h"
+
+#include <limits.h>  /* LONG_MAX, LONG_MIN */
+#include <stdint.h>  /* uint32_t */
+#include <stdio.h>   /* NULL */
+#include <stdlib.h>  /* strtol */
+#include <string.h>  /* memset */
+
+#include "frame.h"   /* frame, frame::(anonymous), cursor, ESC_ALTCHARSET */
+#include "render.h"  /* font_renderer */
+#include "t.h"       /* tclearregion, tmoveto, tscrolldown, tsetscroll */
+#include "util.h"    /* _printf, ESC_ARG_SIZE */
 
 void csiparse(struct frame *f)
 {
