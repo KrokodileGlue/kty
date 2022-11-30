@@ -5,6 +5,7 @@
 #include <stdio.h>   /* NULL */
 #include <stdlib.h>  /* strtol */
 #include <string.h>  /* memset */
+#include <unistd.h>
 
 #include "frame.h"   /* frame, frame::(anonymous), cursor, ESC_ALTCHARSET */
 #include "render.h"  /* font_renderer */
@@ -87,10 +88,13 @@ void csihandle(struct frame *f)
         case 'B': /* Move cursor down n lines */
                 tmoveto(f, f->c.x, f->c.y + DEFAULT(f->csi.arg[0], 1));
                 break;
-        case 'C': /* Move cursor right n lines */
+        case 'C': /* Move cursor right n columns */
                 tmoveto(f, f->c.x + DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
-        case 'D': /* Move cursor left n lines */
+        case 'c':
+                write(f->master, VT_IDENTITY, strlen(VT_IDENTITY));
+                break;
+        case 'D': /* Move cursor left n columns */
                 tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
         case 'h': /* Set terminal mode */
@@ -148,6 +152,10 @@ void csihandle(struct frame *f)
                 break;
 	case 'S': /* SU - Scroll n line up */
 		tscrollup(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
+	case 's': /* DECSC - Save cursor position */
+	case 'u': /* DECRC - Restore cursor position */
+		tcursor(f);
 		break;
 	case 'T': /* SD - Scroll n line down */
 		tscrolldown(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);

@@ -24,6 +24,16 @@ int limit(int *x, int y, int z)
         return *x;
 }
 
+/*
+ * Swap the saved cursor and the real cursor.
+ */
+void tcursor(struct frame *f)
+{
+        struct cursor tmp = f->altcursor;
+        f->altcursor = f->c;
+        f->c = tmp;
+}
+
 void tresize(struct frame *f, int col, int row)
 {
         _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);

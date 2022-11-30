@@ -55,7 +55,7 @@ struct frame {
         /* State */
         int col, row;
         int top, bot; /* Required for tsetscroll */
-        struct cursor c;
+        struct cursor c, altcursor;
         struct glyph **line;
 
         int shell_done; /* bazinga */
