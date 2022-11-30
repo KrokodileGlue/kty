@@ -48,6 +48,10 @@ void tresize(struct frame *f, int col, int row)
 void tprintc(struct frame *f, uint32_t c)
 {
         _printf("Printing U+%x/%c at %d,%d\n", c, c, f->c.x, f->c.y);
+        if (f->c.x >= f->col) {
+                f->c.x = 0;
+                f->c.y++;
+        }
         f->font->dirty_display = 1;
         f->line[f->c.y][f->c.x++] = (struct glyph){
                 .c = c,
