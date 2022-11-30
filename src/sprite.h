@@ -6,7 +6,8 @@
 
 struct sprite {
         uint32_t c;
-        struct font *font;
+        int font;
+        struct texture *texture;
         FT_Glyph_Metrics metrics;
         int bitmap_top;
         float tex_coords[4];

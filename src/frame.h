@@ -1,9 +1,30 @@
 #ifndef FRAME_H
 #define FRAME_H
 
+#include <stdint.h>
+
 #include "util.h"
 
 struct font_renderer;
+
+enum {
+        GLYPH_WRAP      = 1 << 0,
+        GLYPH_UNDERLINE = 1 << 1,
+        GLYPH_BOLD      = 1 << 2,
+        GLYPH_ITALIC    = 1 << 3,
+        GLYPH_DIM       = 1 << 4,
+        GLYPH_BLINKING  = 1 << 5,
+        GLYPH_INVERSE   = 1 << 6,
+        GLYPH_WIDE      = 1 << 7,
+        GLYPH_DUMMY     = 1 << 8,
+        GLYPH_MAX       = GLYPH_DUMMY,
+};
+
+struct glyph {
+        uint32_t c;
+        int mode;
+        int fg, bg;
+};
 
 enum {
         BEL = 0x07,
@@ -28,11 +49,6 @@ struct cursor {
         int fg, bg;
 };
 
-struct window {
-        int width, height;
-        int cw, ch;
-};
-
 enum {
         ESC_START      = 1,
         ESC_CSI        = 1 << 1,
@@ -49,12 +65,12 @@ enum {
 
 struct frame {
         struct font_renderer *font;
+        int cw, ch;
 
         /* PTY */
         int master;
 
         /* State */
-        struct window w;
         int col, row;
         int top, bot; /* Required for tsetscroll */
         struct cursor c;

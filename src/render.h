@@ -8,17 +8,11 @@
 #include "util.h"
 #include "sprite.h"
 
+struct frame;
+
 struct font_renderer {
-        /* FreeType */
-        FT_Library ft;
-
-        /* TODO: Use a hashtable for this. */
-        struct sprite glyph[NUM_GLYPH];
-        int num_glyph;
-
-        /* Fonts */
-        struct font fonts[MAX_FONTS];
-        int num_fonts;
+        /* Pointer to the global font manager. */
+        struct font_manager *m;
 
         /* OpenGL */
         GLuint program;
@@ -37,11 +31,31 @@ struct font_renderer {
         char *decoration_color;
         unsigned num_decoration;
 
+        /* Width of height and window in pixels. */
+        int width, height;
+
         /*
          * This could mean new characters to display or a change in
          * the position/display of the cursor.
          */
         int dirty_display;
+
+        struct font_data {
+                GLuint sprite_texture;
+                GLuint vbo_vertices;
+                GLuint vbo_textures;
+                GLuint vbo_colors;
+                char *vertices, *textures, *colors;
+                int num_glyphs_in_vbo;
+                int is_color_font;
+                struct font *font;
+        } fonts[MAX_FONTS];
+
+        int num_fonts;
 };
+
+int render_init(struct font_renderer *r, struct font_manager *m);
+void render_frame(struct font_renderer *r, struct frame *f);
+void render_load_fonts(struct font_renderer *r);
 
 #endif

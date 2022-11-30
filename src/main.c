@@ -263,9 +263,9 @@ void window_size_callback(GLFWwindow *window, int width, int height)
         /* TODO */
         struct frame *f = k->focus;
 
-        f->w.width = width, f->w.height = height;
-        f->top = 0, f->bot = height / (f->w.ch + LINE_SPACING) - 1;
-        tresize(f, width / f->w.cw, height / (f->w.ch + LINE_SPACING));
+        f->font->width = width, f->font->height = height;
+        f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
+        tresize(f, width / f->cw, height / (f->ch + LINE_SPACING));
         glViewport(0, 0, width, height);
 
         struct winsize ws = {
@@ -344,10 +344,12 @@ int main(int argc, char **argv, char **env)
         }
 
         k = calloc(1, sizeof *k);
+
+        /* This will create a default frame. */
         global_init(k, env, window_title_callback);
 
         /* Load fonts. */
-        if (global_load_fonts(k)) return 1;
+        if (font_manager_init(&k->m, &k->frame[0]->cw, &k->frame[0]->ch)) return 1;
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
