@@ -47,20 +47,38 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        _printf("Printing U+%x/%c at %d,%d\n", c, c, f->c.x, f->c.y);
+        int mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0);
+
         if (f->c.x >= f->col) {
                 f->c.x = 0;
                 f->c.y++;
+                mode |= GLYPH_WRAP;
         }
-        f->font->dirty_display = 1;
+
+        /*
+         * TODO: This might be more appropriate in `tputc`.
+         */
+        if (f->c.y >= f->row) {
+                int diff = f->c.y - f->row;
+                f->c.y -= diff;
+                if (f->c.y == f->row) {
+                        f->c.y--;
+                        diff--;
+                }
+                tnewline(f, diff);
+        }
+
         f->line[f->c.y][f->c.x++] = (struct glyph){
                 .c = c,
-                .mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0),
+                .mode = mode,
                 .fg = f->c.fg,
                 .bg = f->c.bg,
         };
+
         if (wcwidth(c) > 1)
                 f->line[f->c.y][f->c.x++] = (struct glyph){ .mode = GLYPH_DUMMY };
+
+        f->font->dirty_display = 1;
 }
 
 void tinsertblank(struct frame *f, int n)
@@ -290,11 +308,6 @@ void tdeletechar(struct frame *f, int n)
 
 void tputc(struct frame *f, uint32_t c)
 {
-        //_printf("tputc(U+%x/%c) (%d,%d)\n", c, c, f->c.x, f->c.y);
-
-        /* TODO: ??? */
-        if (f->c.x >= f->col) f->c.x = f->col - 1;
-
         /* Here's the legwork of actually interpreting commands. */
 
         if (f->esc & ESC_STR) {
@@ -339,7 +352,7 @@ void tputc(struct frame *f, uint32_t c)
                         _printf("TODO: Handle alternate charsets\n");
                 } else if (eschandle(f, c))
                         resetesc(f);
-        } else if (f->c.x < f->col) {
+        } else {
                 tprintc(f, c);
         }
 }
