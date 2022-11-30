@@ -6,7 +6,9 @@
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 700
 #define FONT_SIZE 12
-#define NUM_GLYPH 4000
+
+/* TODO: This is one of the most concerning. */
+#define NUM_GLYPH 16000
 #define LINE_SPACING 4
 
 /* How long could an escape sequence possibly be. */
