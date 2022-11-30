@@ -17,19 +17,25 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
         if (FT_Init_FreeType(&m->ft))
                 return 1;
 
-        const char *path[] = {
-                "SourceCodePro-Regular.otf",
-                "NotoColorEmoji.ttf",
-                "NotoSansCJK-Regular.ttc",
-                "TibMachUni-1.901b.ttf",
-                "DejaVuSansMono.ttf",
+        static struct {
+                char *path;
+                int type;
+        } path[] = {
+                { "SourceCodePro-Regular.otf", FONT_REGULAR },
+                { "SourceCodePro-Bold.otf", FONT_BOLD },
+                { "SourceCodePro-It.otf", FONT_ITALIC },
+                { "SourceCodePro-BoldIt.otf", FONT_BOLD | FONT_ITALIC },
+                { "NotoColorEmoji.ttf", FONT_REGULAR },
+                { "NotoSansCJK-Regular.ttc", FONT_REGULAR },
+                { "TibMachUni-1.901b.ttf", FONT_REGULAR },
+                { "DejaVuSansMono.ttf", FONT_REGULAR },
         };
 
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {
                 FT_Face face;
 
-                if (FT_New_Face(m->ft, path[i], 0, &face)) {
-                        fprintf(stderr, "Couldn't open font ‘%s’\n", path[i]);
+                if (FT_New_Face(m->ft, path[i].path, 0, &face)) {
+                        fprintf(stderr, "Couldn't open font ‘%s’\n", path[i].path);
                         return 1;
                 }
 
@@ -60,7 +66,7 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
 
                 _printf("Loading font %s\n", path[i]);
                 m->fonts[m->num_fonts++] = (struct font){
-                        .path = path[i],
+                        .path = path[i].path,
                         .face = face,
                         .is_color_font = is_color_font(face),
                         .render_mode = FT_RENDER_MODE_NORMAL,
@@ -70,16 +76,17 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
                          * needs to fit inside of a single GPU texture...
                          */
                         .sprite_buffer = calloc(1, 2048 * 2048 * 4),
+                        .type = path[i].type,
                 };
         }
 
         return 0;
 }
 
-struct sprite *get_sprite(struct font_manager *r, uint32_t c)
+struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
 {
         for (int i = 0; i < r->num_glyph; i++)
-                if (r->glyph[i].c == c)
+                if (r->glyph[i].c == glyph.c && (r->glyph[i].mode & (FONT_BOLD | FONT_ITALIC)) == (glyph.mode & (FONT_BOLD | FONT_ITALIC)))
                         return r->glyph + i;
 
         struct font *font = NULL;
@@ -89,10 +96,14 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c)
         for (int i = 0; i < r->num_fonts; i++) {
                 struct font *fo = r->fonts + i;
                 font_index = i;
+
+                if ((glyph.mode & (GLYPH_BOLD | GLYPH_ITALIC)) != fo->type)
+                        continue;
+
                 FT_Face face = fo->face;
                 FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
-                uint32_t glyph_index = FT_Get_Char_Index(face, c);
+                uint32_t glyph_index = FT_Get_Char_Index(face, glyph.c);
                 if (!glyph_index) continue;
 
                 if (fo->is_color_font) {
@@ -114,22 +125,22 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c)
                         if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
                         if (FT_Render_Glyph(face->glyph, fo->render_mode)) continue;
                 } else {
-                        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
+                        if (FT_Load_Char(face, glyph.c, FT_LOAD_RENDER)) continue;
                 }
 
                 font = fo;
                 break;
         }
 
-        if (!font && c != 0x25a1) return get_sprite(r, 0x25a1);
+        //if (!font && c != 0x25a1) return get_sprite(r, 0x25a1);
         if (!font) return NULL;
 
         FT_GlyphSlot slot = font->face->glyph;
 
 #ifdef DEBUG
         unsigned char buf[5] = { 0 };
-        utf8encode(c, buf, &(unsigned){0});
-        _printf("Adding sprite U+%x (%s) to %s\n", c, buf, font->path);
+        utf8encode(glyph.c, buf, &(unsigned){0});
+        _printf("Adding sprite U+%x (%s) to %s\n", glyph.c, buf, font->path);
 #endif
 
         if (!slot->bitmap.buffer) {
@@ -153,12 +164,13 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c)
                  */
                 struct sprite s = font->glyph[font->num_glyph - 1];
                 font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
-                        .c = c,
+                        .c = glyph.c,
                         .metrics = slot->metrics,
                         .bitmap_top = slot->bitmap_top,
                         .tex_coords = {s.tex_coords[0], s.tex_coords[1], s.tex_coords[2], s.tex_coords[3]},
                         .font = font_index,
                         .height = 0,
+                        .mode = glyph.mode & (FONT_BOLD | FONT_ITALIC),
                 };
                 font->num_glyph++;
 
@@ -209,12 +221,13 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c)
         float fy1 = (float)(y + slot->bitmap.rows) / 2048.0;
 
         font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
-                .c = c,
+                .c = glyph.c,
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
                 .tex_coords = { fx0, fy0, fx1, fy1 },
                 .font = font_index,
                 .height = ch,
+                .mode = glyph.mode & (FONT_BOLD | FONT_ITALIC),
         };
 
         font->spritemap_dirty = 1;

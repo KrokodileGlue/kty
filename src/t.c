@@ -368,6 +368,12 @@ void thandlegraphicmode(struct frame *f, long arg)
         case 22: /* Turn off bold */
                 f->c.mode &= ~GLYPH_BOLD;
                 break;
+        case 3: /* Bold */
+                f->c.mode |= GLYPH_ITALIC;
+                break;
+        case 23: /* Turn off bold */
+                f->c.mode &= ~GLYPH_ITALIC;
+                break;
         case 4: /* Underline */
                 f->c.mode |= GLYPH_UNDERLINE;
                 break;

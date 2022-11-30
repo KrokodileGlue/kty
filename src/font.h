@@ -9,6 +9,12 @@
 #include "util.h"
 #include "sprite.h"
 
+enum {
+        FONT_REGULAR = 0,
+        FONT_BOLD = 1 << 0,
+        FONT_ITALIC = 1 << 1,
+};
+
 struct font {
         const char *path;         /* The path that this font was loaded from. */
         int is_color_font;
@@ -25,6 +31,8 @@ struct font {
 
         int pixel_size;
         int load_flags;
+
+        int type;
 };
 
 struct font_manager {
@@ -41,6 +49,6 @@ struct font_manager {
 };
 
 int font_manager_init(struct font_manager *m, int *cw, int *ch);
-struct sprite *get_sprite(struct font_manager *r, uint32_t c);
+struct sprite *get_sprite(struct font_manager *r, struct glyph c);
 
 #endif
