@@ -21,6 +21,8 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
                 char *path;
                 int type;
         } path[] = {
+                //{ "Minecraft.ttf", FONT_REGULAR },
+                //{ "PixelOperatorMono8.ttf", FONT_REGULAR },
                 { "SourceCodePro-Regular.otf", FONT_REGULAR },
                 { "SourceCodePro-Bold.otf", FONT_BOLD },
                 { "SourceCodePro-It.otf", FONT_ITALIC },
@@ -83,11 +85,14 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
         return 0;
 }
 
-struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
+struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
 {
-        for (int i = 0; i < r->num_glyph; i++)
-                if (r->glyph[i].c == glyph.c && (r->glyph[i].mode & (FONT_BOLD | FONT_ITALIC)) == (glyph.mode & (FONT_BOLD | FONT_ITALIC)))
+        for (int i = 0; i < r->num_glyph; i++) {
+                if (r->glyph[i].c == c &&
+                        (r->glyph[i].mode & (FONT_BOLD | FONT_ITALIC))
+                        == (mode & (FONT_BOLD | FONT_ITALIC)))
                         return r->glyph + i;
+        }
 
         struct font *font = NULL;
         int load_flags = FT_LOAD_COLOR;
@@ -97,13 +102,13 @@ struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
                 struct font *fo = r->fonts + i;
                 font_index = i;
 
-                if ((glyph.mode & (GLYPH_BOLD | GLYPH_ITALIC)) != fo->type)
+                if ((mode & (GLYPH_BOLD | GLYPH_ITALIC)) != fo->type)
                         continue;
 
                 FT_Face face = fo->face;
                 FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
-                uint32_t glyph_index = FT_Get_Char_Index(face, glyph.c);
+                uint32_t glyph_index = FT_Get_Char_Index(face, c);
                 if (!glyph_index) continue;
 
                 if (fo->is_color_font) {
@@ -125,22 +130,23 @@ struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
                         if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
                         if (FT_Render_Glyph(face->glyph, fo->render_mode)) continue;
                 } else {
-                        if (FT_Load_Char(face, glyph.c, FT_LOAD_RENDER)) continue;
+                        if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
                 }
 
                 font = fo;
                 break;
         }
 
-        //if (!font && c != 0x25a1) return get_sprite(r, 0x25a1);
+        if (!font && mode) return get_sprite(r, c, 0);
+        if (!font && c != 0x25a1) return get_sprite(r, 0x25a1, 0);
         if (!font) return NULL;
 
         FT_GlyphSlot slot = font->face->glyph;
 
 #ifdef DEBUG
         unsigned char buf[5] = { 0 };
-        utf8encode(glyph.c, buf, &(unsigned){0});
-        _printf("Adding sprite U+%x (%s) to %s\n", glyph.c, buf, font->path);
+        utf8encode(c, buf, &(unsigned){0});
+        _printf("Adding sprite U+%x (%s) to %s\n", c, buf, font->path);
 #endif
 
         if (!slot->bitmap.buffer) {
@@ -164,13 +170,13 @@ struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
                  */
                 struct sprite s = font->glyph[font->num_glyph - 1];
                 font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
-                        .c = glyph.c,
+                        .c = c,
                         .metrics = slot->metrics,
                         .bitmap_top = slot->bitmap_top,
                         .tex_coords = {s.tex_coords[0], s.tex_coords[1], s.tex_coords[2], s.tex_coords[3]},
                         .font = font_index,
                         .height = 0,
-                        .mode = glyph.mode & (FONT_BOLD | FONT_ITALIC),
+                        .mode = mode & (FONT_BOLD | FONT_ITALIC),
                 };
                 font->num_glyph++;
 
@@ -221,13 +227,13 @@ struct sprite *get_sprite(struct font_manager *r, struct glyph glyph)
         float fy1 = (float)(y + slot->bitmap.rows) / 2048.0;
 
         font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
-                .c = glyph.c,
+                .c = c,
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
                 .tex_coords = { fx0, fy0, fx1, fy1 },
                 .font = font_index,
                 .height = ch,
-                .mode = glyph.mode & (FONT_BOLD | FONT_ITALIC),
+                .mode = mode & (FONT_BOLD | FONT_ITALIC),
         };
 
         font->spritemap_dirty = 1;

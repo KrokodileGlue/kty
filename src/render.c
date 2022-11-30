@@ -155,7 +155,7 @@ int render_glyph(struct font_renderer *r, struct glyph g, int x0, int y0, int cw
         if (g.mode & GLYPH_DUMMY) return 0;
 
         uint32_t c = g.c;
-        struct sprite *sprite = get_sprite(r->m, g);
+        struct sprite *sprite = get_sprite(r->m, g.c, g.mode);
 
         if (!sprite) {
                 fprintf(stderr, "No glyph found for U+%x\n", c);
