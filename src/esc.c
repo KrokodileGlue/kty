@@ -134,7 +134,7 @@ void csihandle(struct frame *f)
         case 'l': /* Reset terminal mode */
                 handle_terminal_mode(f, 0);
                 break;
-        case 'L':
+        case 'L': /* IL - Insert n blank lines */
                 tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
         case 'm':
@@ -146,6 +146,12 @@ void csihandle(struct frame *f)
         case 'P': /* DCH - Delete n chars */
                 tdeletechar(f, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
+	case 'S': /* SU - Scroll n line up */
+		tscrollup(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
+	case 'T': /* SD - Scroll n line down */
+		tscrolldown(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
         case 'r': /* DECSTBM - Set scroll region */
                 if (!f->csi.narg) tsetscroll(f, 0, f->row - 1);
                 else tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
