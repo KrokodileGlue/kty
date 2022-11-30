@@ -52,9 +52,11 @@ struct font_renderer {
         } fonts[MAX_FONTS];
 
         int num_fonts;
+
+        struct color *color256;
 };
 
-int render_init(struct font_renderer *r, struct font_manager *m);
+int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256);
 void render_frame(struct font_renderer *r, struct frame *f);
 void render_load_fonts(struct font_renderer *r);
 

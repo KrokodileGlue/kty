@@ -8,7 +8,7 @@
 #include "gl.h"                 /* bind_attribute_to_program, bind_unifo... */
 #include "frame.h"
 
-int render_init(struct font_renderer *r, struct font_manager *m)
+int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256)
 {
         const char vs[] = "#version 120\n\
 attribute vec2 coord;\n\
@@ -105,6 +105,7 @@ void main(void) {\n\
         }
 
         r->m = m;
+        r->color256 = color256;
 
         return 0;
 }
@@ -132,25 +133,12 @@ void render_rectangle(struct font_renderer *r, float n, float s, float w,
         r->num_decoration++;
 }
 
-struct color get_color_from_index(int i, struct color regular)
+struct color get_color_from_index(struct font_renderer *r, int i, struct color regular)
 {
         struct color c = regular;
 
-        if (i >= 0 && i < 8) {
-                c = (struct color){ i % 2, (i / 2) % 2, i / 4 };
-        } else if (i >= 8 && i < 16) {
-                i -= 8;
-                c = (struct color){ i % 2, (i / 2) % 2, i / 4 };
-        } else if (i >= 16 && i < 256 - 24) {
-                i -= 16;
-                int B = i % 6;
-                int G = (i / 6) % 6;
-                int R = (i / 36) % 6;
-                c = (struct color){ R / 6.0, G / 6.0, B / 6.0 };
-        } else if (i >= 256 - 24 && i < 256) {
-                i -= 256 - 24;
-                float res = i / 24.0;
-                c = (struct color){ res, res, res };
+        if (i >= 0 && i < 256) {
+                return r->color256[i];
         } else if (i >= 256) {
                 i -= 256;
                 int R = (i >> 16) & 0xFF;
@@ -234,8 +222,8 @@ int render_glyph(struct font_renderer *r, struct glyph g, int x0, int y0, int cw
 
         /* TODO: Make default fg and other colors configurable. */
 
-        struct color fg = get_color_from_index(g.fg, (struct color){ 1, 1, 1 });
-        struct color bg = get_color_from_index(g.bg, (struct color){ 0, 0, 0 });
+        struct color fg = get_color_from_index(r, g.fg, (struct color){ 1, 1, 1 });
+        struct color bg = get_color_from_index(r, g.bg, (struct color){ 0, 0, 0 });
 
         if (g.mode & GLYPH_INVERSE) {
                 struct color tmp = fg;
