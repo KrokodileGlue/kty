@@ -1,10 +1,13 @@
 # TODO
 
-* Implement 256 color
++ Implement cursor wrapping
++ Add history
++ Add bold/italic fonts
++ Render each frame into a framebuffer
++ Render frames all together with a global shader / renderbuffer
 
-+ Implement multiple cursor styles
++ Closing vim doesn't restore the previous stuff (scrolling the history back?)
 + Interpret ZWJ sequences
-
 + Clean up frame state properly
 + Add sixel/iTerm2 graphic support
 + Add minimize/maximize/close bar (override system style)
@@ -12,7 +15,6 @@
 + Add scrollbar
 + Fix resizing bugs
 + Don't crash when applications try to write outside the window bounds
-+ When a wcwidth==2 character is printed clear the character after it
 + Handle overflowing spritemaps
 + Use a different spritemap for each font size
 + Fix arrow keys and home/end (or at least alt+home/alt+end)
