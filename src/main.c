@@ -348,9 +348,6 @@ int main(int argc, char **argv, char **env)
         /* This will create a default frame. */
         global_init(k, env, window_title_callback);
 
-        /* Load fonts. */
-        if (font_manager_init(&k->m, &k->frame[0]->cw, &k->frame[0]->ch)) return 1;
-
         int width, height;
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
