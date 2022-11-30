@@ -143,13 +143,20 @@ void csihandle(struct frame *f)
         case 'M': /* DL - Delete n lines */
                 tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
-        case 'P':
+        case 'P': /* DCH - Delete n chars */
                 tdeletechar(f, f->csi.narg ? f->csi.arg[0] : 1);
                 break;
         case 'r': /* DECSTBM - Set scroll region */
                 if (!f->csi.narg) tsetscroll(f, 0, f->row - 1);
                 else tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
                 tmoveato(f, 0, 0);
+                break;
+        case 'd': /* VPA - Move to <row> */
+                tmoveato(f, f->c.x, (f->csi.narg ? f->csi.arg[0] : 1) - 1);
+                break;
+        case 'G': /* CHA - Move to <col> */
+        case '`': /* HPA */
+                tmoveato(f, (f->csi.narg ? f->csi.arg[0] : 1) - 1, f->c.y);
                 break;
         case 'X': /* ECH - Erase n chars */
                 tclearregion(f, f->c.x, f->c.y,

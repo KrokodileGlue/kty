@@ -356,6 +356,16 @@ void thandlegraphicmode(struct frame *f, long arg)
                 return;
         }
 
+        if (arg >= 90 && arg <= 97) {
+                f->c.fg = arg - 90 + 8;
+                return;
+        }
+
+        if (arg >= 100 && arg <= 107) {
+                f->c.bg = arg - 100 + 8;
+                return;
+        }
+
         switch (arg) {
         case 0:
                 f->c.fg = -1;
