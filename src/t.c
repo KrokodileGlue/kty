@@ -43,14 +43,13 @@ void tresize(struct frame *f, int col, int row)
         limit(&f->c.x, 0, col - 1);
         limit(&f->c.y, 0, row - 1);
 
-        for (int i = f->row; i < row; i++) {
+        for (int i = f->row; i < row; i++)
                 f->line[i] = calloc(f->col, sizeof *f->line[i]);
-        }
 
         for (int i = 0; i < row; i++) {
                 f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
                 if (col > f->col)
-                        memset(&f->line[i][f->col], 0, (col - f->col) * sizeof **f->line);
+                        memset(f->line[i] + f->col, 0, (col - f->col) * sizeof **f->line);
         }
 
         f->col = col;
@@ -88,8 +87,25 @@ void tprintc(struct frame *f, uint32_t c)
                 .bg = f->c.bg,
         };
 
-        if (wcwidth(c) > 1)
+        if (wcwidth(c) > 1) {
+                if (f->c.x >= f->col) {
+                        f->c.x = 0;
+                        f->c.y++;
+                        mode |= GLYPH_WRAP;
+                }
+
+                if (f->c.y >= f->row) {
+                        int diff = f->c.y - f->row;
+                        f->c.y -= diff;
+                        if (f->c.y == f->row) {
+                                f->c.y--;
+                                diff--;
+                        }
+                        tnewline(f, diff);
+                }
+
                 f->line[f->c.y][f->c.x++] = (struct glyph){ .mode = GLYPH_DUMMY };
+        }
 
         f->font->dirty_display = 1;
 }
