@@ -40,6 +40,9 @@ void tresize(struct frame *f, int col, int row)
 
         f->line = realloc(f->line, row * sizeof *f->line);
 
+        limit(&f->c.x, 0, col - 1);
+        limit(&f->c.y, 0, row - 1);
+
         for (int i = f->row; i < row; i++) {
                 f->line[i] = calloc(f->col, sizeof *f->line[i]);
         }
