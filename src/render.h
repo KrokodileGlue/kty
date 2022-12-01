@@ -16,15 +16,19 @@ struct font_renderer {
 
         /* OpenGL */
         GLuint program;
+        GLuint ui_program;
+
+        GLint ui_attribute_coord;
 
         GLint attribute_coord;
         GLint attribute_decoration_color;
         GLint attribute_color;
+        GLint uniform_ui_tex;
         GLint uniform_tex;
         GLint uniform_is_solid;
         GLint uniform_is_color;
 
-        /* VBO for rendering decoration and background colors */
+        GLuint vbo_quad;
         GLuint vbo_decoration;
         GLuint vbo_decoration_color;
         char *decoration;
@@ -59,5 +63,6 @@ struct font_renderer {
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256);
 void render_frame(struct font_renderer *r, struct frame *f);
 void render_load_fonts(struct font_renderer *r);
+void render_quad(struct font_renderer *r, GLuint tex);
 
 #endif

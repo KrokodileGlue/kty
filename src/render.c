@@ -40,6 +40,37 @@ void main(void) {\n\
         }\n\
 }";
 
+        const char vs2[] = "#version 120\n\
+attribute vec4 coord;\n\
+varying vec2 tcoord;\n\
+varying vec2 scoord;\n\
+void main(void) {\n\
+        gl_Position = vec4(coord.xy, 0, 1);\n\
+        tcoord = coord.zw;\n\
+        scoord = coord.xy;\n\
+}";
+
+        const char fs2[] = "#version 120\n\
+varying vec2 tcoord;\n\
+varying vec2 scoord;\n\
+uniform sampler2D tex;\n\
+vec4 f(vec2 uv)\n\
+{\n\
+    float dd = distance(uv, vec2(.5,.5))/8.;\n\
+    vec2 nv = vec2(uv.x + (uv.x*2.-1.)*dd, uv.y + (uv.y*2.-1.)*dd);\n\
+    if (nv.x <= 0. || nv.y <= 0. || nv.x >= 1. || nv.y >= 1.) {\n\
+        return vec4(0);\n\
+    } else {\n\
+		return texture2D(tex, nv);\n\
+    }\n\
+}\n\
+void main(void) {\n\
+    vec2 uvt = (scoord.xy + 1) / 2.0;\n\
+    vec2 uv = uvt;\n\
+    gl_FragColor = f(uv);\n\
+    gl_FragColor = sqrt(gl_FragColor);\n\
+}";
+
         /* Compile each shader. */
         GLuint gvs = create_shader(vs, GL_VERTEX_SHADER);
         GLuint gfs = create_shader(fs, GL_FRAGMENT_SHADER);
@@ -51,7 +82,6 @@ void main(void) {\n\
         glAttachShader(r->program, gvs);
         glAttachShader(r->program, gfs);
         glLinkProgram(r->program);
-        glUseProgram(r->program);
 
         /* Now check that everything compiled and linked okay. */
         GLint link_ok = GL_FALSE;
@@ -63,10 +93,31 @@ void main(void) {\n\
                 return 1;
         }
 
+        GLuint gvs2 = create_shader(vs2, GL_VERTEX_SHADER);
+        GLuint gfs2 = create_shader(fs2, GL_FRAGMENT_SHADER);
+
+        if (!gvs2 || !gfs2) return 1;
+
+        r->ui_program = glCreateProgram();
+        glAttachShader(r->ui_program, gvs2);
+        glAttachShader(r->ui_program, gfs2);
+        glLinkProgram(r->ui_program);
+
+        glGetProgramiv(r->ui_program, GL_LINK_STATUS, &link_ok);
+
+        if (!link_ok) {
+                fprintf(stderr, "glLinkProgram:");
+                print_gl_error_log(r->ui_program);
+                return 1;
+        }
+
+        r->ui_attribute_coord = bind_attribute_to_program(r->ui_program, "coord");
+
         r->attribute_coord = bind_attribute_to_program(r->program, "coord");
         r->attribute_decoration_color = bind_attribute_to_program(r->program, "decoration_color");
         r->attribute_color = bind_attribute_to_program(r->program, "tex_color");
 
+        r->uniform_ui_tex = bind_uniform_to_program(r->ui_program, "tex");
         r->uniform_tex = bind_uniform_to_program(r->program, "tex");
         r->uniform_is_solid = bind_uniform_to_program(r->program, "is_solid");
         r->uniform_is_color = bind_uniform_to_program(r->program, "is_color");
@@ -81,6 +132,33 @@ void main(void) {\n\
         glGenBuffers(1, &r->vbo_decoration_color);
         r->decoration_color = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat));
         r->num_fonts = m->num_fonts;
+
+        struct {
+                GLfloat x, y, s, t;
+        } coord[6] = {
+                { -1, -1, 0, 0 },
+                {  1, -1, 1, 0 },
+                { -1,  1, 0, 1 },
+                { -1,  1, 0, 1 },
+                {  1,  1, 1, 1 },
+                {  1, -1, 1, 0 },
+        };
+
+        glGenBuffers(1, &r->vbo_quad);
+        glBindBuffer(GL_ARRAY_BUFFER, r->vbo_quad);
+        glEnableVertexAttribArray(r->ui_attribute_coord);
+
+        glBufferData(GL_ARRAY_BUFFER,
+                6 * 4 * sizeof(GLfloat),
+                coord,
+                GL_DYNAMIC_DRAW);
+
+        glVertexAttribPointer(r->ui_attribute_coord,
+                              4,
+                              GL_FLOAT,
+                              GL_FALSE,
+                              4 * sizeof(GLfloat),
+                              0);
 
         /*
          * So the renderer needs to keep track of some per-font data, including
@@ -106,6 +184,8 @@ void main(void) {\n\
 
         r->m = m;
         r->color256 = color256;
+        r->width = 800;
+        r->height = 800;
 
         return 0;
 }
@@ -296,8 +376,35 @@ void render_cursor(struct font_renderer *r, struct frame *f)
         render_rectangle(r, n, s, w, e, c);
 }
 
+void render_quad(struct font_renderer *r, GLuint tex)
+{
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(r->ui_program);
+
+        glBindBuffer(GL_ARRAY_BUFFER, r->vbo_quad);
+        glEnableVertexAttribArray(r->ui_attribute_coord);
+        glVertexAttribPointer(r->ui_attribute_coord,
+                              4,
+                              GL_FLOAT,
+                              GL_FALSE,
+                              4 * sizeof(GLfloat),
+                              0);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
 void render_frame(struct font_renderer *r, struct frame *f)
 {
+        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
+        glUseProgram(r->program);
+        /* TODO: Clean up the framebuffer. */
+
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 

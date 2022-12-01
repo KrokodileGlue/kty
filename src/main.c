@@ -265,6 +265,11 @@ void window_size_callback(GLFWwindow *window, int width, int height)
 
         f->font->width = width, f->font->height = height;
         f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
+
+        glBindTexture(GL_TEXTURE_2D, f->tex_color_buffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, f->font->width, f->font->height, 0,
+                GL_RGB, GL_UNSIGNED_BYTE, NULL);
+
         tresize(f, width / f->cw, height / (f->ch + LINE_SPACING));
         glViewport(0, 0, width, height);
 

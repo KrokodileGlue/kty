@@ -36,17 +36,24 @@ int print_gl_error_log(GLuint object)
 GLint create_shader(const GLchar *source, GLenum type)
 {
         GLuint res = glCreateShader(type);
+
+        if (!res) {
+                _printf("Can't create shader\n");
+        }
+
         glShaderSource(res, 1, &source, NULL);
 
         glCompileShader(res);
         GLint compile_ok = GL_FALSE;
         glGetShaderiv(res, GL_COMPILE_STATUS, &compile_ok);
         if (compile_ok == GL_FALSE) {
+                _printf("Couldn't compile shader\n");
                 print_gl_error_log(res);
                 glDeleteShader(res);
                 return 0;
         }
 
+        _printf("res: %d\n", res);
         return res;
 }
 

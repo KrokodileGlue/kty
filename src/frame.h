@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include <GL/glew.h>
+
 #include "util.h"
 #include "sprite.h"
 
@@ -97,6 +99,9 @@ struct frame {
         } cursor_style;
 
         struct global *k;
+
+        GLuint framebuffer;
+        GLuint tex_color_buffer;
 };
 
 struct frame *frame_new(char **env, struct font_renderer *f);

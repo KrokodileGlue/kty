@@ -311,6 +311,8 @@ int global_notify_title_change(struct frame *f)
 int global_render(struct global *f)
 {
         /* TODO */
+        struct font_renderer *r = &f->font;
         render_frame(&f->font, f->frame[0]);
+        render_quad(r, f->frame[0]->tex_color_buffer);
         return 0;
 }
