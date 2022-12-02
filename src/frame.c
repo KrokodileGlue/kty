@@ -85,12 +85,13 @@ struct frame *frame_new(char **env, struct font_renderer *r)
         glGenTextures(1, &f->tex_color_buffer);
         glBindTexture(GL_TEXTURE_2D, f->tex_color_buffer);
 
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
         /* TODO: Don't use the window width and height here. */
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, r->width, r->height, 0,
                 GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glBindTexture(GL_TEXTURE_2D, 0);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,

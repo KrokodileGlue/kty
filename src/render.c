@@ -61,14 +61,15 @@ vec4 f(vec2 uv)\n\
     if (nv.x <= 0. || nv.y <= 0. || nv.x >= 1. || nv.y >= 1.) {\n\
         return vec4(0);\n\
     } else {\n\
-		return texture2D(tex, nv);\n\
+        return texture2D(tex, nv);\n\
     }\n\
 }\n\
 void main(void) {\n\
     vec2 uvt = (scoord.xy + 1) / 2.0;\n\
     vec2 uv = uvt;\n\
-    gl_FragColor = f(uv);\n\
-    gl_FragColor = sqrt(gl_FragColor);\n\
+//    gl_FragColor = f(uv);\n\
+//    gl_FragColor = sqrt(gl_FragColor);\n\
+    gl_FragColor = texture2D(tex, tcoord.xy);\n\
 }";
 
         /* Compile each shader. */
@@ -378,6 +379,8 @@ void render_cursor(struct font_renderer *r, struct frame *f)
 
 void render_quad(struct font_renderer *r, GLuint tex)
 {
+        glViewport(0, 0, r->width, r->height);
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -395,12 +398,15 @@ void render_quad(struct font_renderer *r, GLuint tex)
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex);
+        glGenerateMipmap(GL_TEXTURE_2D);
 
         glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
 void render_frame(struct font_renderer *r, struct frame *f)
 {
+        glViewport(0, 0, r->width, r->height);
+
         glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
         glUseProgram(r->program);
         /* TODO: Clean up the framebuffer. */
