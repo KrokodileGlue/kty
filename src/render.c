@@ -424,16 +424,32 @@ void render_frame(struct font_renderer *r, struct frame *f)
                 r->num_decoration = 0;
 
                 int offset = 0;
+                int totaloffset = 0;
+
+                int lastline = 0;
+
+                for (int i = f->row - 1; i >= 0; i--)
+                        if (f->lineend[i]) {
+                                lastline = i;
+                                break;
+                        }
+
+                for (int i = 0; i < lastline; i++)
+                        totaloffset += f->lineend[i] / f->col;
+
+                if (totaloffset + lastline > f->row)
+                        totaloffset = -(totaloffset + lastline - f->row) - 1;
+                else
+                        totaloffset = 0;
 
                 for (int i = 0; i < f->row; i++) {
-                        for (int j = 0; j < f->linelen[i]; j++) {
+                        for (int j = 0; j <= f->lineend[i]; j++) {
                                 /* Add the cursor to the decoration VBO. */
-                                if (f->c.y == i && f->c.x == j && f->mode & MODE_CURSOR_VISIBLE)
-                                        render_cursor(r, f, j % f->col, i + j / f->col + offset);
+                                if (f->c.y == i && f->c.x == j && (f->mode & MODE_CURSOR_VISIBLE))
+                                        render_cursor(r, f, j % f->col, i + j / f->col + offset + totaloffset);
 
-                                if (f->line[i][j].c) {
-                                        render_cell(r, f->line[i][j], j % f->col, i + j / f->col + offset, f->cw, f->ch);
-                                }
+                                if (!f->line[i][j].c) continue;
+                                render_cell(r, f->line[i][j], j % f->col, i + j / f->col + offset + totaloffset, f->cw, f->ch);
                         }
                         offset += f->lineend[i] / f->col;
                 }

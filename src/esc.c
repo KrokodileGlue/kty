@@ -109,18 +109,18 @@ void csihandle(struct frame *f)
         case 'J': /* Clear screen */
                 switch (f->csi.arg[0]) {
                 case 0: /* below */
-                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                        tclearregion(f, f->c.x, f->c.y, -1, f->c.y);
                         if (f->c.y < f->row - 1) {
-                                tclearregion(f, 0, f->c.y + 1, f->col - 1, f->row - 1);
+                                tclearregion(f, 0, f->c.y + 1, -1, f->row - 1);
                         }
                         break;
                 case 1: /* above */
                         if (f->c.y > 1)
-                                tclearregion(f, 0, 0, f->col - 1, f->c.y - 1);
+                                tclearregion(f, 0, 0, -1, f->c.y - 1);
                         tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
                         break;
                 case 2: /* all */
-                        tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        tclearregion(f, 0, 0, -1, f->row - 1);
                         break;
                 default:
                         _printf("Unknown clear argument %ld\n", f->csi.arg[0]);
@@ -129,11 +129,11 @@ void csihandle(struct frame *f)
                 break;
         case 'K': /* EL - Clear line */
                 if (!f->csi.narg || f->csi.arg[0] == 0)
-                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                        tclearregion(f, f->c.x, f->c.y, -1, f->c.y);
                 else if (f->csi.arg[0] == 1)
                         tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
                 else if (f->csi.arg[0] == 2)
-                        tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
+                        tclearregion(f, 0, f->c.y, -1, f->c.y);
                 break;
         case 'l': /* Reset terminal mode */
                 handle_terminal_mode(f, 0);
