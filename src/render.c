@@ -307,14 +307,17 @@ int render_cell(struct font_renderer *r, struct cell g,
 
         /* TODO: Make default fg and other colors configurable. */
 
-        struct color fg = get_color_from_index(r, g.fg, (struct color){ 1, 1, 1 });
-        struct color bg = get_color_from_index(r, g.bg, (struct color){ 0, 0, 0 });
+        int bfg = g.fg;
+        int bbg = g.bg;
 
         if (g.mode & CELL_INVERSE) {
-                struct color tmp = fg;
-                fg = bg;
-                bg = tmp;
+                int tmp = bfg;
+                bfg = bbg;
+                bbg = tmp;
         }
+
+        struct color fg = get_color_from_index(r, bfg, (struct color){ 1, 1, 1 });
+        struct color bg = get_color_from_index(r, bbg, (struct color){ 0, 0, 0 });
 
         struct color col[] = { fg, fg, fg, fg, fg, fg };
 
@@ -325,12 +328,13 @@ int render_cell(struct font_renderer *r, struct cell g,
         memcpy(font->colors + font->num_cells_in_vbo * sizeof col, col, sizeof col);
         font->num_cells_in_vbo++;
 
-        render_rectangle(r,
-                y + ch * sy,
-                y - LINE_SPACING * sy,
-                x + cw * sx,
-                x,
-                bg);
+        if (bbg != -1)
+                render_rectangle(r,
+                                 y + ch * sy,
+                                 y - LINE_SPACING * sy,
+                                 x + cw * sx,
+                                 x,
+                                 bg);
 
         if (g.mode & CELL_UNDERLINE)
                 render_rectangle(r,
