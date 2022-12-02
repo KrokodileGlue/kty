@@ -26,8 +26,8 @@ struct font {
         int sprite_buffer_len;
         int spritemap_dirty;
 
-        struct sprite glyph[NUM_GLYPH];
-        int num_glyph;              /* The number of glyphs in the spritemap. */
+        struct sprite cell[NUM_CELL];
+        int num_cell;              /* The number of cells in the spritemap. */
 
         int pixel_size;
         int load_flags;
@@ -40,8 +40,8 @@ struct font_manager {
         FT_Library ft;
 
         /* TODO: Use a hashtable for this. */
-        struct sprite glyph[NUM_GLYPH];
-        int num_glyph;
+        struct sprite cell[NUM_CELL];
+        int num_cell;
 
         /* Fonts */
         struct font fonts[MAX_FONTS];

@@ -129,9 +129,9 @@ void main(void) {\n\
 
         /* Generate the underline VBO. */
         glGenBuffers(1, &r->vbo_decoration);
-        r->decoration = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat));
+        r->decoration = calloc(NUM_CELL * 2, 6 * 2 * sizeof(GLfloat));
         glGenBuffers(1, &r->vbo_decoration_color);
-        r->decoration_color = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat));
+        r->decoration_color = calloc(NUM_CELL * 2, 6 * 3 * sizeof(GLfloat));
         r->num_fonts = m->num_fonts;
 
         struct {
@@ -169,9 +169,9 @@ void main(void) {\n\
                 struct font_data *f = r->fonts + i;
 
                 *f = (struct font_data){
-                        .vertices = calloc(NUM_GLYPH * 2, 6 * 2 * sizeof(GLfloat)),
-                        .textures = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
-                        .colors = calloc(NUM_GLYPH * 2, 6 * 3 * sizeof(GLfloat)),
+                        .vertices = calloc(NUM_CELL * 2, 6 * 2 * sizeof(GLfloat)),
+                        .textures = calloc(NUM_CELL * 2, 6 * 3 * sizeof(GLfloat)),
+                        .colors = calloc(NUM_CELL * 2, 6 * 3 * sizeof(GLfloat)),
                         .is_color_font = m->fonts[i].is_color_font,
                         .font = m->fonts + i,
                 };
@@ -232,18 +232,18 @@ struct color get_color_from_index(struct font_renderer *r, int i, struct color r
 }
 
 /*
- * Renders a `struct glyph` into the current framebuffer.
+ * Renders a `struct cell` into the current framebuffer.
  */
-int render_glyph(struct font_renderer *r, struct glyph g,
+int render_cell(struct font_renderer *r, struct cell g,
                  int x0, int y0, int cw, int ch)
 {
-        if (g.mode & GLYPH_DUMMY) return 0;
+        if (g.mode & CELL_DUMMY) return 0;
 
         uint32_t c = g.c;
         struct sprite *sprite = get_sprite(r->m, g.c, g.mode);
 
         if (!sprite) {
-                fprintf(stderr, "No glyph found for U+%x\n", c);
+                fprintf(stderr, "No cell found for U+%x\n", c);
                 return 1;
         }
 
@@ -310,7 +310,7 @@ int render_glyph(struct font_renderer *r, struct glyph g,
         struct color fg = get_color_from_index(r, g.fg, (struct color){ 1, 1, 1 });
         struct color bg = get_color_from_index(r, g.bg, (struct color){ 0, 0, 0 });
 
-        if (g.mode & GLYPH_INVERSE) {
+        if (g.mode & CELL_INVERSE) {
                 struct color tmp = fg;
                 fg = bg;
                 bg = tmp;
@@ -320,10 +320,10 @@ int render_glyph(struct font_renderer *r, struct glyph g,
 
         struct font_data *font = r->fonts + sprite->font;
 
-        memcpy(font->vertices + font->num_glyphs_in_vbo * sizeof box, box, sizeof box);
-        memcpy(font->textures + font->num_glyphs_in_vbo * sizeof tex, tex, sizeof tex);
-        memcpy(font->colors + font->num_glyphs_in_vbo * sizeof col, col, sizeof col);
-        font->num_glyphs_in_vbo++;
+        memcpy(font->vertices + font->num_cells_in_vbo * sizeof box, box, sizeof box);
+        memcpy(font->textures + font->num_cells_in_vbo * sizeof tex, tex, sizeof tex);
+        memcpy(font->colors + font->num_cells_in_vbo * sizeof col, col, sizeof col);
+        font->num_cells_in_vbo++;
 
         render_rectangle(r,
                 y + ch * sy,
@@ -332,7 +332,7 @@ int render_glyph(struct font_renderer *r, struct glyph g,
                 x,
                 bg);
 
-        if (g.mode & GLYPH_UNDERLINE)
+        if (g.mode & CELL_UNDERLINE)
                 render_rectangle(r,
                                  y - 3 * sy + 1 * sy,
                                  y - 3 * sy,
@@ -363,7 +363,7 @@ void render_cursor(struct font_renderer *r, struct frame *f)
                 case CURSOR_STYLE_DEFAULT:
                 case CURSOR_STYLE_STEADY_BLOCK:
                         /* Thicken the cursor. */
-                        if (f->line[y][x].mode & GLYPH_WIDE)
+                        if (f->line[y][x].mode & CELL_WIDE)
                                 e += f->cw * sx;
                         break;
                 case CURSOR_STYLE_BLINKING_UNDERLINE:
@@ -421,14 +421,14 @@ void render_frame(struct font_renderer *r, struct frame *f)
         if (r->dirty_display) {
                 /* Reset the VBO render state. */
                 for (int i = 0; i < r->num_fonts; i++)
-                        r->fonts[i].num_glyphs_in_vbo = 0;
+                        r->fonts[i].num_cells_in_vbo = 0;
 
                 r->num_decoration = 0;
 
                 for (int i = 0; i < f->row; i++)
                         for (int j = 0; j < f->col; j++)
                                 if (f->line[i][j].c)
-                                        render_glyph(r, f->line[i][j], j, i, f->cw, f->ch);
+                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch);
 
                 /* Add the cursor to the decoration VBO. */
                 if (f->mode & MODE_CURSOR_VISIBLE)
@@ -474,7 +474,7 @@ void render_frame(struct font_renderer *r, struct frame *f)
         glDrawArrays(GL_TRIANGLES, 0, r->num_decoration * 6);
 
         /*
-         * So each glyph has been rendered into its font's spritesheet at this
+         * So each cell has been rendered into its font's spritesheet at this
          * point.
          */
 
@@ -486,7 +486,7 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 if (r->dirty_display)
                         glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_glyphs_in_vbo * 6 * 2 * sizeof(GLfloat),
+                                     font->num_cells_in_vbo * 6 * 2 * sizeof(GLfloat),
                                      font->vertices,
                                      GL_DYNAMIC_DRAW);
 
@@ -502,7 +502,7 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 if (r->dirty_display)
                         glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
+                                     font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
                                      font->textures,
                                      GL_DYNAMIC_DRAW);
 
@@ -518,7 +518,7 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 if (r->dirty_display)
                         glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_glyphs_in_vbo * 6 * 3 * sizeof(GLfloat),
+                                     font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
                                      font->colors,
                                      GL_DYNAMIC_DRAW);
 
@@ -565,7 +565,7 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 glUniform1i(r->uniform_is_color, !!font->is_color_font);
 
-                glDrawArrays(GL_TRIANGLES, 0, font->num_glyphs_in_vbo * 6);
+                glDrawArrays(GL_TRIANGLES, 0, font->num_cells_in_vbo * 6);
         }
 
         r->dirty_display = 0;

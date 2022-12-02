@@ -8,7 +8,7 @@
 #define FONT_SIZE 12
 
 /* TODO: This is one of the most concerning. */
-#define NUM_GLYPH 16000
+#define NUM_CELL 16000
 #define LINE_SPACING 4
 
 /* How long could an escape sequence possibly be. */

@@ -50,7 +50,7 @@ struct font_renderer {
                 GLuint vbo_textures;
                 GLuint vbo_colors;
                 char *vertices, *textures, *colors;
-                int num_glyphs_in_vbo;
+                int num_cells_in_vbo;
                 int is_color_font;
                 struct font *font;
         } fonts[MAX_FONTS];

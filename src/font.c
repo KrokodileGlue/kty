@@ -87,11 +87,11 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
 
 struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
 {
-        for (int i = 0; i < r->num_glyph; i++) {
-                if (r->glyph[i].c == c &&
-                        (r->glyph[i].mode & (FONT_BOLD | FONT_ITALIC))
+        for (int i = 0; i < r->num_cell; i++) {
+                if (r->cell[i].c == c &&
+                        (r->cell[i].mode & (FONT_BOLD | FONT_ITALIC))
                         == (mode & (FONT_BOLD | FONT_ITALIC)))
-                        return r->glyph + i;
+                        return r->cell + i;
         }
 
         struct font *font = NULL;
@@ -102,14 +102,14 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                 struct font *fo = r->fonts + i;
                 font_index = i;
 
-                if ((mode & (GLYPH_BOLD | GLYPH_ITALIC)) != fo->type)
+                if ((mode & (CELL_BOLD | CELL_ITALIC)) != fo->type)
                         continue;
 
                 FT_Face face = fo->face;
                 FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
 
-                uint32_t glyph_index = FT_Get_Char_Index(face, c);
-                if (!glyph_index) continue;
+                uint32_t cell_index = FT_Get_Char_Index(face, c);
+                if (!cell_index) continue;
 
                 if (fo->is_color_font) {
                         if (!face->num_fixed_sizes) return NULL;
@@ -127,7 +127,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
 
                         FT_Select_Size(face, best_match);
 
-                        if (FT_Load_Glyph(face, glyph_index, load_flags)) continue;
+                        if (FT_Load_Glyph(face, cell_index, load_flags)) continue;
                         if (FT_Render_Glyph(face->glyph, fo->render_mode)) continue;
                 } else {
                         if (FT_Load_Char(face, c, FT_LOAD_RENDER)) continue;
@@ -168,8 +168,8 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                  * used for rendering but they are used for spritemap
                  * allocation.
                  */
-                struct sprite s = font->glyph[font->num_glyph - 1];
-                font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
+                struct sprite s = font->cell[font->num_cell - 1];
+                font->cell[font->num_cell] = r->cell[r->num_cell] = (struct sprite){
                         .c = c,
                         .metrics = slot->metrics,
                         .bitmap_top = slot->bitmap_top,
@@ -178,9 +178,9 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                         .height = 0,
                         .mode = mode & (FONT_BOLD | FONT_ITALIC),
                 };
-                font->num_glyph++;
+                font->num_cell++;
 
-                return &r->glyph[r->num_glyph++];
+                return &r->cell[r->num_cell++];
         }
 
         /* TODO: Fix this haha. */
@@ -188,14 +188,14 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
 
         int x = 0, y = 0;
 
-        if (font->num_glyph) {
-                x = font->glyph[font->num_glyph - 1].tex_coords[2] * 2048 + 1;
-                y = font->glyph[font->num_glyph - 1].tex_coords[1] * 2048;
+        if (font->num_cell) {
+                x = font->cell[font->num_cell - 1].tex_coords[2] * 2048 + 1;
+                y = font->cell[font->num_cell - 1].tex_coords[1] * 2048;
         }
 
         int m = 0;
-        for (int i = 0; i < font->num_glyph; i++)
-                m = font->glyph[i].height > m ? font->glyph[i].height : m;
+        for (int i = 0; i < font->num_cell; i++)
+                m = font->cell[i].height > m ? font->cell[i].height : m;
 
         _printf("\tStored at spritemap coordinates %d,%d\n", x, y);
 
@@ -226,7 +226,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
         float fy0 = (float)y / 2048.0;
         float fy1 = (float)(y + slot->bitmap.rows) / 2048.0;
 
-        font->glyph[font->num_glyph] = r->glyph[r->num_glyph] = (struct sprite){
+        font->cell[font->num_cell] = r->cell[r->num_cell] = (struct sprite){
                 .c = c,
                 .metrics = slot->metrics,
                 .bitmap_top = slot->bitmap_top,
@@ -237,7 +237,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
         };
 
         font->spritemap_dirty = 1;
-        font->num_glyph++;
+        font->num_cell++;
 
-        return &r->glyph[r->num_glyph++];
+        return &r->cell[r->num_cell++];
 }

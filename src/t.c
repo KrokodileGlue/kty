@@ -10,7 +10,7 @@
 #include <wchar.h>                     /* wcwidth */
 
 #include "esc.h"                       /* resetcsi, resetesc, csihandle */
-#include "font.h"                      /* glyph, GLYPH_BOLD, GLYPH_DUMMY */
+#include "font.h"                      /* cell, CELL_BOLD, CELL_DUMMY */
 #include "frame.h"                     /* frame, cursor, frame::(anonymous) */
 #include "render.h"                    /* font_renderer */
 #include "utf8.h"                      /* utf8decode, utf8encode */
@@ -63,7 +63,7 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        int mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0);
+        int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
 
         /*
          * TODO: This might be more appropriate in `tputc`.
@@ -85,7 +85,7 @@ void tprintc(struct frame *f, uint32_t c)
                 f->linelen[f->c.y] *= 2;
         }
 
-        f->line[f->c.y][f->c.x++] = (struct glyph){
+        f->line[f->c.y][f->c.x++] = (struct cell){
                 .c = c,
                 .mode = mode,
                 .fg = f->c.fg,
@@ -96,7 +96,7 @@ void tprintc(struct frame *f, uint32_t c)
                 if (f->c.x >= f->col) {
                         f->c.x = 0;
                         f->c.y++;
-                        mode |= GLYPH_WRAP;
+                        mode |= CELL_WRAP;
                 }
 
                 if (f->c.y >= f->row) {
@@ -109,7 +109,7 @@ void tprintc(struct frame *f, uint32_t c)
                         tnewline(f, diff);
                 }
 
-                f->line[f->c.y][f->c.x++] = (struct glyph){ .mode = GLYPH_DUMMY };
+                f->line[f->c.y][f->c.x++] = (struct cell){ .mode = CELL_DUMMY };
         }
 
         f->font->dirty_display = 1;
@@ -118,7 +118,7 @@ void tprintc(struct frame *f, uint32_t c)
 void tinsertblank(struct frame *f, int n)
 {
         int dst, src, size;
-        struct glyph *line;
+        struct cell *line;
 
         limit(&n, 0, f->col - f->c.x);
 
@@ -127,7 +127,7 @@ void tinsertblank(struct frame *f, int n)
         size = f->col - dst;
         line = f->line[f->c.y];
 
-        memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+        memmove(&line[dst], &line[src], size * sizeof(struct cell));
         tclearregion(f, src, f->c.y, dst - 1, f->c.y);
 }
 
@@ -137,7 +137,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 
         for (int i = y0; i <= y1; i++)
                 for (int j = x0; j <= x1; j++)
-                        f->line[i][j] = (struct glyph){
+                        f->line[i][j] = (struct cell){
                                 .c = 0,
                                 .mode = 0,
                                 .fg = -1,
@@ -192,7 +192,7 @@ void tscrolldown(struct frame *f, int orig, int n)
         tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
 
         for (int i = f->bot; i >= orig + n; i--) {
-                struct glyph *temp = f->line[i];
+                struct cell *temp = f->line[i];
                 f->line[i] = f->line[i - n];
                 f->line[i - n] = temp;
         }
@@ -207,7 +207,7 @@ void tscrollup(struct frame *f, int orig, int n)
         tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
 
         for (int i = orig; i <= f->bot - n; i++) {
-                struct glyph *tmp = f->line[i];
+                struct cell *tmp = f->line[i];
                 f->line[i] = f->line[i + n];
                 f->line[i + n] = tmp;
         }
@@ -327,7 +327,7 @@ void tcontrolcode(struct frame *f, uint32_t c)
 void tdeletechar(struct frame *f, int n)
 {
         int dst, src, size;
-        struct glyph *line;
+        struct cell *line;
 
         limit(&n, 0, f->col - f->c.x);
 
@@ -336,7 +336,7 @@ void tdeletechar(struct frame *f, int n)
         size = f->col - src;
         line = f->line[f->c.y];
 
-        memmove(&line[dst], &line[src], size * sizeof(struct glyph));
+        memmove(&line[dst], &line[src], size * sizeof(struct cell));
         tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
 }
 
@@ -420,28 +420,28 @@ void thandlegraphicmode(struct frame *f, long arg)
                 f->c.mode = 0;
                 break;
         case 1: /* Bold */
-                f->c.mode |= GLYPH_BOLD;
+                f->c.mode |= CELL_BOLD;
                 break;
         case 22: /* Turn off bold */
-                f->c.mode &= ~GLYPH_BOLD;
+                f->c.mode &= ~CELL_BOLD;
                 break;
         case 3: /* Bold */
-                f->c.mode |= GLYPH_ITALIC;
+                f->c.mode |= CELL_ITALIC;
                 break;
         case 23: /* Turn off bold */
-                f->c.mode &= ~GLYPH_ITALIC;
+                f->c.mode &= ~CELL_ITALIC;
                 break;
         case 4: /* Underline */
-                f->c.mode |= GLYPH_UNDERLINE;
+                f->c.mode |= CELL_UNDERLINE;
                 break;
         case 24: /* Turn off underline */
-                f->c.mode &= ~GLYPH_UNDERLINE;
+                f->c.mode &= ~CELL_UNDERLINE;
                 break;
         case 7:
-                f->c.mode |= GLYPH_INVERSE;
+                f->c.mode |= CELL_INVERSE;
                 break;
         case 27:
-                f->c.mode &= ~GLYPH_INVERSE;
+                f->c.mode &= ~CELL_INVERSE;
                 break;
         case 39:
                 f->c.fg = -1;

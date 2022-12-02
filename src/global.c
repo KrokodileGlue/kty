@@ -12,11 +12,11 @@
 #include <stdlib.h>             /* calloc, abs */
 #include <string.h>             /* memcpy */
 #include <wchar.h>              /* wcwidth */
-#include "font.h"               /* font, glyph, GLYPH_DUMMY, GLYPH_INVERSE */
+#include "font.h"               /* font, cell, CELL_DUMMY, CELL_INVERSE */
 #include "frame.h"              /* frame, window, frame_new, cursor, MOD... */
 #include "render.h"             /* font_renderer */
 #include "sprite.h"             /* sprite */
-#include "util.h"               /* color, LINE_SPACING, NUM_GLYPH, FONT_... */
+#include "util.h"               /* color, LINE_SPACING, NUM_CELL, FONT_... */
 #include "utf8.h"
 #include "render.h"
 
