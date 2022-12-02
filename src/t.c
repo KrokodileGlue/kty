@@ -39,17 +39,21 @@ void tresize(struct frame *f, int col, int row)
         _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
 
         f->line = realloc(f->line, row * sizeof *f->line);
+        f->linelen = realloc(f->linelen, row * sizeof *f->linelen);
 
         limit(&f->c.x, 0, col - 1);
         limit(&f->c.y, 0, row - 1);
 
-        for (int i = f->row; i < row; i++)
-                f->line[i] = calloc(f->col, sizeof *f->line[i]);
+        for (int i = f->row; i < row; i++) {
+                f->line[i] = calloc(col, sizeof *f->line[i]);
+                f->linelen[i] = col;
+        }
 
         for (int i = 0; i < row; i++) {
+                if (col < f->linelen[i]) continue;
                 f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
-                if (col > f->col)
-                        memset(f->line[i] + f->col, 0, (col - f->col) * sizeof **f->line);
+                memset(f->line[i] + f->linelen[i], 0, (col - f->linelen[i]) * sizeof **f->line);
+                f->linelen[i] = col;
         }
 
         f->col = col;
@@ -60,12 +64,6 @@ void tresize(struct frame *f, int col, int row)
 void tprintc(struct frame *f, uint32_t c)
 {
         int mode = f->c.mode | (wcwidth(c) == 2 ? GLYPH_WIDE : 0);
-
-        if (f->c.x >= f->col) {
-                f->c.x = 0;
-                f->c.y++;
-                mode |= GLYPH_WRAP;
-        }
 
         /*
          * TODO: This might be more appropriate in `tputc`.
@@ -78,6 +76,13 @@ void tprintc(struct frame *f, uint32_t c)
                         diff--;
                 }
                 tnewline(f, diff);
+        }
+
+        if (f->c.x >= f->linelen[f->c.y]) {
+                int y = f->c.y;
+                f->line[y] = realloc(f->line[y], 2 * f->linelen[y] * sizeof **f->line);
+                memset(f->line[y] + f->linelen[y], 0, f->linelen[y] * sizeof **f->line);
+                f->linelen[f->c.y] *= 2;
         }
 
         f->line[f->c.y][f->c.x++] = (struct glyph){

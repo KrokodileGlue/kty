@@ -231,7 +231,11 @@ struct color get_color_from_index(struct font_renderer *r, int i, struct color r
         return c;
 }
 
-int render_glyph(struct font_renderer *r, struct glyph g, int x0, int y0, int cw, int ch)
+/*
+ * Renders a `struct glyph` into the current framebuffer.
+ */
+int render_glyph(struct font_renderer *r, struct glyph g,
+                 int x0, int y0, int cw, int ch)
 {
         if (g.mode & GLYPH_DUMMY) return 0;
 
