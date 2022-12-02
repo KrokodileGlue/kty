@@ -49,7 +49,6 @@ void tresize(struct frame *f, int col, int row)
                 f->line[i] = calloc(col, sizeof *f->line[i]);
                 f->linelen[i] = col;
                 f->lineend[i] = 0;
-                _printf("lineend[%d] = %d\n", i, 0);
         }
 
         for (int i = 0; i < row; i++) {
@@ -89,10 +88,8 @@ void tprintc(struct frame *f, uint32_t c)
                 f->linelen[f->c.y] *= 2;
         }
 
-        if (f->c.x > f->lineend[f->c.y]) {
+        if (f->c.x > f->lineend[f->c.y])
                 f->lineend[f->c.y] = f->c.x;
-                _printf("lineend[%d] = %d\n", f->c.y, f->lineend[f->c.y]);
-        }
 
         f->line[f->c.y][f->c.x++] = (struct cell){
                 .c = c,
@@ -477,10 +474,10 @@ void thandlegraphicmode(struct frame *f, long arg)
         case 24: /* Turn off underline */
                 f->c.mode &= ~CELL_UNDERLINE;
                 break;
-        case 7:
+        case 7:                 /* Turn on inverse video mode */
                 f->c.mode |= CELL_INVERSE;
                 break;
-        case 27:
+        case 27:                /* Turn off inverse video mode */
                 f->c.mode &= ~CELL_INVERSE;
                 break;
         case 39:

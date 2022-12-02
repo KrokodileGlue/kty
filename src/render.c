@@ -214,21 +214,14 @@ void render_rectangle(struct font_renderer *r, float n, float s, float w,
         r->num_decoration++;
 }
 
-struct color get_color_from_index(struct font_renderer *r, int i, struct color regular)
+struct color get_color_from_index(struct font_renderer *r, int i)
 {
-        struct color c = regular;
-
-        if (i >= 0 && i < 256) {
-                return r->color256[i];
-        } else if (i >= 256) {
-                i -= 256;
-                int R = (i >> 16) & 0xFF;
-                int G = (i >> 8) & 0xFF;
-                int B = (i >> 0) & 0xFF;
-                c = (struct color){ R / 255.0, G / 255.0, B / 255.0 };
-        }
-
-        return c;
+        if (i >= 0 && i < 256) return r->color256[i];
+        i -= 256;
+        int R = (i >> 16) & 0xFF;
+        int G = (i >> 8) & 0xFF;
+        int B = (i >> 0) & 0xFF;
+        return (struct color){ R / 255.0, G / 255.0, B / 255.0 };
 }
 
 /*
@@ -311,13 +304,16 @@ int render_cell(struct font_renderer *r, struct cell g,
         int bbg = g.bg;
 
         if (g.mode & CELL_INVERSE) {
+                if (bbg < 0) bbg = 16;
+                if (bfg < 0) bfg = 255;
+
                 int tmp = bfg;
                 bfg = bbg;
                 bbg = tmp;
         }
 
-        struct color fg = get_color_from_index(r, bfg, (struct color){ 1, 1, 1 });
-        struct color bg = get_color_from_index(r, bbg, (struct color){ 0, 0, 0 });
+        struct color fg = get_color_from_index(r, bfg);
+        struct color bg = get_color_from_index(r, bbg);
 
         struct color col[] = { fg, fg, fg, fg, fg, fg };
 
