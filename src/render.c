@@ -416,6 +416,8 @@ void render_frame(struct font_renderer *r, struct frame *f)
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        int cursorx = f->c.x, cursory = f->c.y;
+
         if (r->dirty_display) {
                 /* Reset the VBO render state. */
                 for (int i = 0; i < r->num_fonts; i++)
@@ -444,16 +446,20 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 for (int i = 0; i < f->row; i++) {
                         for (int j = 0; j <= f->lineend[i]; j++) {
-                                /* Add the cursor to the decoration VBO. */
-                                if (f->c.y == i && f->c.x == j && (f->mode & MODE_CURSOR_VISIBLE))
-                                        render_cursor(r, f, j % f->col, i + j / f->col + offset + totaloffset);
+                                int x = j % f->col;
+                                int y = i + j / f->col + offset + totaloffset;
 
-                                if (!f->line[i][j].c) continue;
-                                render_cell(r, f->line[i][j], j % f->col, i + j / f->col + offset + totaloffset, f->cw, f->ch);
+                                if (f->line[i][j].c)
+                                        render_cell(r, f->line[i][j], x, y, f->cw, f->ch);
+
+                                if (f->c.y == i) cursory = y;
                         }
                         offset += f->lineend[i] / f->col;
                 }
         }
+
+        if (f->mode & MODE_CURSOR_VISIBLE)
+                render_cursor(r, f, cursorx, cursory);
 
         /* Render the quads. */
         glUniform1i(r->uniform_is_solid, 1);
@@ -587,5 +593,5 @@ void render_frame(struct font_renderer *r, struct frame *f)
                 glDrawArrays(GL_TRIANGLES, 0, font->num_cells_in_vbo * 6);
         }
 
-        r->dirty_display = 0;
+        /* r->dirty_display = 0; */
 }
