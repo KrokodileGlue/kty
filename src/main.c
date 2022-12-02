@@ -207,6 +207,12 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (action == GLFW_RELEASE) return;
 
+        if (key == GLFW_KEY_INSERT && mods & GLFW_MOD_SHIFT) {
+                const char *s = glfwGetClipboardString(window);
+                write(f->master, s, strlen(s));
+                return;
+        }
+
         /*
          * The GLFW keycode things are hardcoded
          * (https://www.glfw.org/docs/3.3/group__keys.html), so it's
