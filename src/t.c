@@ -40,6 +40,7 @@ void tresize(struct frame *f, int col, int row)
 
         f->line = realloc(f->line, row * sizeof *f->line);
         f->linelen = realloc(f->linelen, row * sizeof *f->linelen);
+        f->lineend = realloc(f->lineend, row * sizeof *f->lineend);
 
         limit(&f->c.x, 0, col - 1);
         limit(&f->c.y, 0, row - 1);
@@ -47,6 +48,7 @@ void tresize(struct frame *f, int col, int row)
         for (int i = f->row; i < row; i++) {
                 f->line[i] = calloc(col, sizeof *f->line[i]);
                 f->linelen[i] = col;
+                f->lineend[i] = 0;
         }
 
         for (int i = 0; i < row; i++) {
@@ -84,6 +86,9 @@ void tprintc(struct frame *f, uint32_t c)
                 memset(f->line[y] + f->linelen[y], 0, f->linelen[y] * sizeof **f->line);
                 f->linelen[f->c.y] *= 2;
         }
+
+        if (f->c.x > f->lineend[f->c.y])
+                f->lineend[f->c.y] = f->c.x;
 
         f->line[f->c.y][f->c.x++] = (struct cell){
                 .c = c,
@@ -135,7 +140,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        for (int i = y0; i <= y1; i++)
+        for (int i = y0; i <= y1; i++) {
                 for (int j = x0; j <= x1; j++)
                         f->line[i][j] = (struct cell){
                                 .c = 0,
@@ -143,6 +148,15 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                                 .fg = -1,
                                 .bg = -1,
                         };
+                if (f->lineend[i] >= x0 && f->lineend[i] <= x1) {
+                        f->lineend[i] = 0;
+                        for (int j = x0 - 1; j >= 0; j--)
+                                if (f->line[i][j].c) {
+                                        f->lineend[i] = j;
+                                        break;
+                                }
+                }
+        }
         f->font->dirty_display = 1;
 }
 

@@ -60,6 +60,7 @@ struct frame {
         struct cursor c, altcursor;
         struct cell **line;
         int *linelen;
+        int *lineend;
 
         int shell_done; /* bazinga */
 

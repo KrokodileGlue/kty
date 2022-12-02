@@ -343,10 +343,8 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct frame *f)
+void render_cursor(struct font_renderer *r, struct frame *f, int x, int y)
 {
-        int x = f->c.x, y = f->c.y;
-
         float sx = 2.0 / (float)r->width;
         float sy = 2.0 / (float)r->height;
 
@@ -363,7 +361,7 @@ void render_cursor(struct font_renderer *r, struct frame *f)
                 case CURSOR_STYLE_DEFAULT:
                 case CURSOR_STYLE_STEADY_BLOCK:
                         /* Thicken the cursor. */
-                        if (f->line[y][x].mode & CELL_WIDE)
+                        if (f->line[f->c.y][f->c.x].mode & CELL_WIDE)
                                 e += f->cw * sx;
                         break;
                 case CURSOR_STYLE_BLINKING_UNDERLINE:
@@ -425,15 +423,20 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 r->num_decoration = 0;
 
-                for (int i = 0; i < f->row; i++)
-                        for (int j = 0; j < f->col; j++)
-                                if (f->line[i][j].c)
-                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch);
+                int offset = 0;
 
-                /* Add the cursor to the decoration VBO. */
-                if (f->mode & MODE_CURSOR_VISIBLE)
-                        render_cursor(r, f);
+                for (int i = 0; i < f->row; i++) {
+                        for (int j = 0; j < f->linelen[i]; j++) {
+                                /* Add the cursor to the decoration VBO. */
+                                if (f->c.y == i && f->c.x == j && f->mode & MODE_CURSOR_VISIBLE)
+                                        render_cursor(r, f, j % f->col, i + j / f->col + offset);
 
+                                if (f->line[i][j].c) {
+                                        render_cell(r, f->line[i][j], j % f->col, i + j / f->col + offset, f->cw, f->ch);
+                                }
+                        }
+                        offset += f->lineend[i] / f->col;
+                }
         }
 
         /* Render the quads. */
