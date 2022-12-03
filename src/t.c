@@ -64,7 +64,7 @@ void tprintc(struct frame *f, uint32_t c)
         if (f->c.x >= f->col) {
                 f->c.x = 0;
                 f->c.y++;
-                mode |= GLYPH_WRAP;
+                mode |= CELL_WRAP;
         }
 
         /*
@@ -80,7 +80,7 @@ void tprintc(struct frame *f, uint32_t c)
                 tnewline(f, diff);
         }
 
-        f->line[f->c.y][f->c.x++] = (struct glyph){
+        f->line[f->c.y][f->c.x++] = (struct cell){
                 .c = c,
                 .mode = mode,
                 .fg = f->c.fg,
