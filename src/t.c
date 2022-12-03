@@ -261,6 +261,7 @@ void tprintc(struct frame *f, uint32_t c)
 
         if (f->c.x >= f->col) {
                 f->linewrapped[f->c.y] = true;
+                _printf("wrapping %d\n", f->c.y);
                 mode |= CELL_WRAP;
                 f->c.x = 0;
                 f->c.y++;
@@ -276,7 +277,7 @@ void tprintc(struct frame *f, uint32_t c)
                         f->c.y--;
                         diff--;
                 }
-                tnewline(f, diff);
+                tscrollup(f, 0, abs(diff));
         }
 
         f->line[f->c.y][f->c.x++] = (struct cell){
@@ -303,7 +304,7 @@ void tprintc(struct frame *f, uint32_t c)
                                 f->c.y--;
                                 diff--;
                         }
-                        tnewline(f, diff);
+                        tscrollup(f, 0, abs(diff));
                 }
 
                 f->line[f->c.y][f->c.x++] = (struct cell){
@@ -398,13 +399,13 @@ void tscrolldown(struct frame *f, int orig, int n)
         tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
 
         for (int i = f->bot; i >= orig + n; i--) {
-                struct cell *temp = f->line[i];
+                struct cell *tmp = f->line[i];
                 f->line[i] = f->line[i - n];
-                f->line[i - n] = temp;
+                f->line[i - n] = tmp;
 
-                bool tmp = f->linewrapped[i];
+                bool temp = f->linewrapped[i];
                 f->linewrapped[i] = f->linewrapped[i - n];
-                f->linewrapped[i - n] = tmp;
+                f->linewrapped[i - n] = temp;
         }
 
         f->font->dirty_display = 1;
@@ -422,8 +423,8 @@ void tscrollup(struct frame *f, int orig, int n)
                 f->line[i + n] = tmp;
 
                 bool temp = f->linewrapped[i];
-                f->linewrapped[i] = f->linewrapped[i - n];
-                f->linewrapped[i - n] = temp;
+                f->linewrapped[i] = f->linewrapped[i + n];
+                f->linewrapped[i + n] = temp;
         }
 
         f->font->dirty_display = 1;
