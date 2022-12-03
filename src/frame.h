@@ -22,12 +22,6 @@ enum {
         DEL = 0x7F,
 };
 
-enum {
-        CURSOR_DEFAULT  = 0,
-        CURSOR_ORIGIN   = 1,
-        CURSOR_WRAPNEXT = 1 << 1,
-};
-
 struct cursor {
         int x, y, mode, state;
         int fg, bg;

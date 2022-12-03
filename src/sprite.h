@@ -18,6 +18,8 @@ enum {
         CELL_INVERSE   = 1 << 6,
         CELL_WIDE      = 1 << 7,
         CELL_DUMMY     = 1 << 8,
+        CELL_WRAPNEXT  = 1 << 9,
+        CELL_ORIGIN    = 1 << 10,
         CELL_MAX       = CELL_DUMMY,
 };
 

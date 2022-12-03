@@ -81,7 +81,7 @@ void tprintc(struct frame *f, uint32_t c)
                 tnewline(f, diff);
         }
 
-        if ((f->mode & MODE_WRAP) && (f->c.mode & CURSOR_WRAPNEXT))
+        if ((f->mode & MODE_WRAP) && (f->c.mode & CELL_WRAPNEXT))
                 tnewline(f, 1);
 
         if (f->c.x >= f->linelen[f->c.y]) {
@@ -129,7 +129,7 @@ void tprintc(struct frame *f, uint32_t c)
         }
 
         if (f->c.x % f->col == 0)
-                f->c.mode |= CURSOR_WRAPNEXT;
+                f->c.mode |= CELL_WRAPNEXT;
 
         f->font->dirty_display = 1;
 }
@@ -181,7 +181,7 @@ void tmoveto(struct frame *f, int x, int y)
 
         int miny = 0, maxy = f->row - 1;
 
-        if (f->c.state & CURSOR_ORIGIN) {
+        if (f->c.state & CELL_ORIGIN) {
                 miny = f->top;
                 maxy = f->bot;
         }
@@ -194,7 +194,7 @@ void tmoveto(struct frame *f, int x, int y)
 void tmoveato(struct frame *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
-        tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top : 0));
+        tmoveto(f, x, y + ((f->c.state & CELL_ORIGIN) ? f->top : 0));
 }
 
 void tsetscroll(struct frame *f, int top, int bot)
@@ -466,10 +466,10 @@ void thandlegraphicmode(struct frame *f, long arg)
         case 22: /* Turn off bold */
                 f->c.mode &= ~CELL_BOLD;
                 break;
-        case 3: /* Bold */
+        case 3: /* Italic */
                 f->c.mode |= CELL_ITALIC;
                 break;
-        case 23: /* Turn off bold */
+        case 23: /* Turn off italic */
                 f->c.mode &= ~CELL_ITALIC;
                 break;
         case 4: /* Underline */
