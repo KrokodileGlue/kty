@@ -139,24 +139,14 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        for (int i = y0; i <= y1; i++) {
-                int _x1 = (x1 == -1 ? f->linelen[i] - 1 : x1);
-                for (int j = x0; j <= _x1; j++)
+        for (int i = y0; i <= y1; i++)
+                for (int j = x0; j <= x1; j++)
                         f->line[i][j] = (struct cell){
                                 .c = 0,
                                 .mode = 0,
                                 .fg = -1,
                                 .bg = -1,
                         };
-                if (f->lineend[i] >= x0 && f->lineend[i] <= _x1) {
-                        f->lineend[i] = -1;
-                        for (int j = x0 - 1; j >= 0; j--)
-                                if (f->line[i][j].c) {
-                                        f->lineend[i] = j;
-                                        break;
-                                }
-                }
-        }
         f->font->dirty_display = 1;
 }
 

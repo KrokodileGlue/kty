@@ -343,8 +343,10 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct frame *f, int x, int y)
+void render_cursor(struct font_renderer *r, struct frame *f)
 {
+        int x = f->c.x, y = f->c.y;
+
         float sx = 2.0 / (float)r->width;
         float sy = 2.0 / (float)r->height;
 
@@ -361,7 +363,7 @@ void render_cursor(struct font_renderer *r, struct frame *f, int x, int y)
                 case CURSOR_STYLE_DEFAULT:
                 case CURSOR_STYLE_STEADY_BLOCK:
                         /* Thicken the cursor. */
-                        if (f->line[f->c.y][f->c.x].mode & CELL_WIDE)
+                        if (f->line[y][x].mode & CELL_WIDE)
                                 e += f->cw * sx;
                         break;
                 case CURSOR_STYLE_BLINKING_UNDERLINE:
@@ -425,37 +427,15 @@ void render_frame(struct font_renderer *r, struct frame *f)
 
                 r->num_decoration = 0;
 
-                int offset = 0;
-                int totaloffset = 0;
-
-                int lastline = 0;
-
-                for (int i = f->row - 1; i >= 0; i--)
-                        if (f->lineend[i] >= 0) {
-                                lastline = i;
-                                break;
-                        }
-
-                for (int i = 0; i < lastline; i++)
-                        totaloffset += (f->lineend[i] + 1) / f->col;
-
-                if (totaloffset + lastline >= f->row)
-                        totaloffset = -(totaloffset + lastline - f->row) - 1;
-                else
-                        totaloffset = 0;
-
-                for (int i = 0; i < f->row; i++) {
-                        for (int j = 0; j <= f->lineend[i]; j++) {
-                                int x = j % f->col;
-                                int y = i + j / f->col + offset + totaloffset;
-
+                for (int i = 0; i < f->row; i++)
+                        for (int j = 0; j < f->col; j++)
                                 if (f->line[i][j].c)
-                                        render_cell(r, f->line[i][j], x, y, f->cw, f->ch);
+                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch);
 
-                                if (f->c.y == i) cursory = y;
-                        }
-                        offset += f->lineend[i] / f->col;
-                }
+                /* Add the cursor to the decoration VBO. */
+                if (f->mode & MODE_CURSOR_VISIBLE)
+                        render_cursor(r, f);
+
         }
 
         if (f->mode & MODE_CURSOR_VISIBLE)
