@@ -59,7 +59,6 @@ void tresize(struct frame *f, int col, int row)
 
 void tprintc(struct frame *f, uint32_t c)
 {
-        _printf("%d,%d = U+%"PRIX32" (%c)\n", f->c.x, f->c.y, c, c);
         int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
 
         if (f->c.x >= f->col) {
@@ -89,16 +88,11 @@ void tprintc(struct frame *f, uint32_t c)
         };
 
         if (wcwidth(c) > 1) {
-                /* TODO: Clean this up. */
-                if (f->c.x >= f->linelen[f->c.y]) {
-                        int y = f->c.y;
-                        f->line[y] = realloc(f->line[y], 2 * f->linelen[y] * sizeof **f->line);
-                        memset(f->line[y] + f->linelen[y], 0, f->linelen[y] * sizeof **f->line);
-                        f->linelen[f->c.y] *= 2;
+                if (f->c.x >= f->col) {
+                        f->c.x = 0;
+                        f->c.y++;
+                        mode |= CELL_WRAP;
                 }
-
-                if (f->c.x > f->lineend[f->c.y])
-                        f->lineend[f->c.y] = f->c.x;
 
                 if (f->c.y >= f->row) {
                         int diff = f->c.y - f->row;
@@ -189,20 +183,12 @@ void tsetscroll(struct frame *f, int top, int bot)
 
 void tscrolldown(struct frame *f, int orig, int n)
 {
-        tclearregion(f, 0, f->bot - n + 1, -1, f->bot);
+        tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
 
         for (int i = f->bot; i >= orig + n; i--) {
                 struct cell *temp = f->line[i];
                 f->line[i] = f->line[i - n];
                 f->line[i - n] = temp;
-
-                int tmp1 = f->lineend[i];
-                f->lineend[i] = f->lineend[i - n];
-                f->lineend[i - n] = tmp1;
-
-                tmp1 = f->linelen[i];
-                f->linelen[i] = f->linelen[i - n];
-                f->linelen[i - n] = tmp1;
         }
 
         f->font->dirty_display = 1;
@@ -212,20 +198,12 @@ void tscrollup(struct frame *f, int orig, int n)
 {
         _printf("Scrolling %d lines around %d\n", n, orig);
 
-        tclearregion(f, 0, orig, -1, orig + n - 1);
+        tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
 
         for (int i = orig; i <= f->bot - n; i++) {
                 struct cell *tmp = f->line[i];
                 f->line[i] = f->line[i + n];
                 f->line[i + n] = tmp;
-
-                int tmp1 = f->lineend[i];
-                f->lineend[i] = f->lineend[i + n];
-                f->lineend[i + n] = tmp1;
-
-                tmp1 = f->linelen[i];
-                f->linelen[i] = f->linelen[i + n];
-                f->linelen[i + n] = tmp1;
         }
 
         f->font->dirty_display = 1;
@@ -353,7 +331,7 @@ void tdeletechar(struct frame *f, int n)
         line = f->line[f->c.y];
 
         memmove(&line[dst], &line[src], size * sizeof(struct cell));
-        tclearregion(f, f->col - n, f->c.y, -1, f->c.y);
+        tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
 }
 
 void tputc(struct frame *f, uint32_t c)
