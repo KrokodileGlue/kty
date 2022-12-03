@@ -26,7 +26,7 @@ struct font {
         int sprite_buffer_len;
         int spritemap_dirty;
 
-        struct sprite cell[NUM_CELL];
+        struct sprite cell[MAX_SPRITES_IN_FONT];
         int num_cell;              /* The number of cells in the spritemap. */
 
         int pixel_size;

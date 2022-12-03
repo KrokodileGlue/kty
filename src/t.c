@@ -38,19 +38,217 @@ void tresize(struct frame *f, int col, int row)
 {
         _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
 
+        /* Save a little effort. */
+        if (f->col == col && f->row == row) return;
+
         f->line = realloc(f->line, row * sizeof *f->line);
+        f->linewrapped = realloc(f->linewrapped, row * sizeof *f->linewrapped);
 
         limit(&f->c.x, 0, col - 1);
         limit(&f->c.y, 0, row - 1);
 
-        for (int i = f->row; i < row; i++)
+        for (int i = f->row; i < row; i++) {
                 f->line[i] = calloc(f->col, sizeof *f->line[i]);
-
-        for (int i = 0; i < row; i++) {
-                f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
-                if (col > f->col)
-                        memset(f->line[i] + f->col, 0, (col - f->col) * sizeof **f->line);
+                f->linewrapped[i] = 0;
         }
+
+        if (col > f->col)
+                for (int i = 0; i < row; i++) {
+                        f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
+                        memset(f->line[i] + f->col, 0, (col - f->col) * sizeof **f->line);
+                }
+
+        bool wrapped[row];
+        memset(wrapped, 0, sizeof wrapped);
+
+        for (int i = 0; i < f->row; i++)
+                _printf("  [%d] = %d\n", i, f->linewrapped[i]);
+
+        if (col > f->col) {
+                for (int i = 0; i < row; i++) {
+                        _printf("processing expansion at line %d\n", i);
+                        struct { int x, y; } a = { 0, i }, b = a;
+
+                        int endofblock = i;
+
+                        while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
+
+                        int numlines = endofblock - i + 1;
+
+                        int lastlineupdated = a.y;
+
+                        while ((b.y && f->linewrapped[b.y - 1]) || (b.y == i && f->linewrapped[i])) {
+                                if (b.y >= row || a.y >= row) break;
+
+                                f->line[a.y][a.x] = f->line[b.y][b.x];
+
+                                if (f->line[b.y][b.x].c)
+                                        lastlineupdated = a.y;
+
+                                if (a.x != b.x || a.y != b.y)
+                                        f->line[b.y][b.x] = (struct cell){ 0 };
+
+                                a.x++;
+                                b.x++;
+
+                                if (a.x == col) {
+                                        _printf("marking %d as wrapped\n", a.y);
+                                        wrapped[a.y] = true;
+                                        a.x = 0;
+                                        a.y++;
+                                }
+
+                                if (b.x == f->col) {
+                                        b.x = 0;
+                                        b.y++;
+                                }
+
+                                if (!((b.y && f->linewrapped[b.y - 1]) || (b.y == i && f->linewrapped[i]))) {
+                                        b.y++;
+                                        break;
+                                }
+                        }
+
+                        for (int j = i; j < lastlineupdated; j++) {
+                                _printf("wrapping %d\n", j);
+                                wrapped[j] = true;
+                        }
+
+                        for (int j = lastlineupdated; j <= a.y; j++) {
+                                _printf("unwrapping %d\n", j);
+                                wrapped[j] = false;
+                        }
+
+                        for (int j = 0; j <= a.y; j++) {
+                                f->linewrapped[j] = false;
+                        }
+
+                        _printf("lastlineupdated = %d, endofblock = %d\n", lastlineupdated, endofblock);
+                        for (int j = 0; j < endofblock - lastlineupdated; j++) {
+                                _printf("scrolling up %d\n", lastlineupdated + 1);
+                                tscrollup(f, lastlineupdated + 1, 1);
+                                if (f->c.y > lastlineupdated + 1) f->c.y--;
+                        }
+
+                        i = lastlineupdated;
+                }
+        } else if (col < f->col) {
+                /*
+                 * If we're shrinking horizontally then lines which
+                 * are currently considered wrapped should remain so.
+                 */
+                /* memcpy(wrapped, f->linewrapped, sizeof wrapped); */
+
+                for (int i = 0; i < row; i++) {
+                        int eol = 0;
+
+                        for (int j = f->col - 1; j >= col; j--)
+                                if (f->line[i][j].c) {
+                                        eol = j;
+                                        break;
+                                }
+
+                        /* if (eol < col) continue; */
+
+                        struct { int x, y; } a = { 0, i }, b = a;
+
+                        struct cell line[f->col];
+                        memcpy(line, f->line[i], sizeof line);
+
+                        _printf("eol: %d\n", eol);
+                        if (!f->linewrapped[a.y] && eol >= col) {
+                                for (int j = 0; j <= eol; j++) {
+                                        f->line[a.y][a.x] = line[b.x];
+
+                                        if (b.y >= 0 && (a.x != b.x || a.y != b.y))
+                                                f->line[b.y][b.x] = (struct cell){ 0 };
+
+                                        a.x++;
+                                        b.x++;
+
+                                        if (a.x == col) {
+                                                tscrolldown(f, a.y + 1, 1);
+                                                if (f->c.y >= a.y) f->c.y++;
+                                                a.x = 0;
+                                                a.y++;
+                                                memset(f->line[a.y], 0, col * sizeof *f->line);
+                                        }
+                                }
+
+                                for (int j = i; j < a.y; j++) {
+                                        _printf("single long line %d\n", j);
+                                        wrapped[j] = true;
+                                }
+
+                                i = a.y;
+                                continue;
+                        }
+
+                        if (!f->linewrapped[i]) continue;
+
+                        /*
+                         * If we reach this point then we're looking
+                         * at a wrapped line. The sequence of wrapped
+                         * lines may be long.
+                         */
+
+                        int endofblock = i;
+
+                        while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
+
+                        _printf("re-wrapping a block of long lines %d-%d\n", i, endofblock - 1);
+
+                        int numlines = endofblock - i + 1;
+
+                        struct cell **block = malloc(numlines * sizeof *block);
+
+                        for (int j = 0; j < numlines; j++) {
+                                block[j] = malloc(f->col * sizeof **block);
+                                memcpy(block[j], f->line[i + j], f->col * sizeof **block);
+                        }
+
+                        while (b.y <= endofblock) {
+                                int eol = 0;
+
+                                for (int j = f->col - 1; j >= 0; j--)
+                                        if (block[b.y - i][j].c) {
+                                                eol = j;
+                                                break;
+                                        }
+
+                                if (b.y == endofblock && b.x > eol) break;
+
+                                f->line[a.y][a.x] = block[b.y - i][b.x];
+
+                                a.x++;
+                                b.x++;
+
+                                if (a.x == col) {
+                                        a.x = 0;
+                                        a.y++;
+
+                                        if (a.y >= endofblock + 1) {
+                                                tscrolldown(f, a.y, 1);
+                                                memset(f->line[a.y], 0, col * sizeof *f->line);
+                                                if (f->c.y >= a.y) f->c.y++;
+                                        }
+                                }
+
+                                if (b.x == f->col) {
+                                        b.x = 0;
+                                        b.y++;
+                                }
+                        }
+
+                        _printf("re-wrapping wrapped[%d-%d]\n", i, a.y - 1);
+                        for (int j = i; j < a.y; j++)
+                                wrapped[j] = true;
+
+                        i = a.y - 1;
+                }
+        }
+
+        memcpy(f->linewrapped, wrapped, sizeof wrapped);
 
         f->col = col;
         f->row = row;
@@ -62,9 +260,10 @@ void tprintc(struct frame *f, uint32_t c)
         int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
 
         if (f->c.x >= f->col) {
+                f->linewrapped[f->c.y] = true;
+                mode |= CELL_WRAP;
                 f->c.x = 0;
                 f->c.y++;
-                mode |= CELL_WRAP;
         }
 
         /*
@@ -88,10 +287,13 @@ void tprintc(struct frame *f, uint32_t c)
         };
 
         if (wcwidth(c) > 1) {
+                int wrapped = 0;
+
                 if (f->c.x >= f->col) {
+                        f->linewrapped[f->c.y] = true;
+                        wrapped = CELL_WRAP;
                         f->c.x = 0;
                         f->c.y++;
-                        mode |= CELL_WRAP;
                 }
 
                 if (f->c.y >= f->row) {
@@ -104,7 +306,9 @@ void tprintc(struct frame *f, uint32_t c)
                         tnewline(f, diff);
                 }
 
-                f->line[f->c.y][f->c.x++] = (struct cell){ .mode = CELL_DUMMY };
+                f->line[f->c.y][f->c.x++] = (struct cell){
+                        .mode = CELL_DUMMY | wrapped,
+                };
         }
 
         if (f->c.x % f->col == 0)
@@ -133,7 +337,11 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        for (int i = y0; i <= y1; i++)
+        if (x1 >= f->col) x1 = f->col - 1;
+        if (y1 >= f->row) y1 = f->row - 1;
+
+        for (int i = y0; i <= y1; i++) {
+                f->linewrapped[i] = false;
                 for (int j = x0; j <= x1; j++)
                         f->line[i][j] = (struct cell){
                                 .c = 0,
@@ -141,6 +349,8 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                                 .fg = -1,
                                 .bg = -1,
                         };
+        }
+
         f->font->dirty_display = 1;
 }
 
@@ -183,12 +393,18 @@ void tsetscroll(struct frame *f, int top, int bot)
 
 void tscrolldown(struct frame *f, int orig, int n)
 {
+        _printf("Scrolling %d lines around %d\n", n, orig);
+
         tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
 
         for (int i = f->bot; i >= orig + n; i--) {
                 struct cell *temp = f->line[i];
                 f->line[i] = f->line[i - n];
                 f->line[i - n] = temp;
+
+                bool tmp = f->linewrapped[i];
+                f->linewrapped[i] = f->linewrapped[i - n];
+                f->linewrapped[i - n] = tmp;
         }
 
         f->font->dirty_display = 1;
@@ -204,6 +420,10 @@ void tscrollup(struct frame *f, int orig, int n)
                 struct cell *tmp = f->line[i];
                 f->line[i] = f->line[i + n];
                 f->line[i + n] = tmp;
+
+                bool temp = f->linewrapped[i];
+                f->linewrapped[i] = f->linewrapped[i - n];
+                f->linewrapped[i - n] = temp;
         }
 
         f->font->dirty_display = 1;
@@ -211,7 +431,7 @@ void tscrollup(struct frame *f, int orig, int n)
 
 void tnewline(struct frame *f, int first_col)
 {
-        _printf("tnewline\n", first_col);
+        _printf("tnewline\n");
 
         int y = f->c.y;
 

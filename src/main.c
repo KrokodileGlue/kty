@@ -20,6 +20,7 @@
 #include "t.h"
 #include "util.h"
 
+pthread_t shell_reader;
 GLFWwindow *window;
 struct global *k;
 
@@ -362,7 +363,6 @@ int main(int argc, char **argv, char **env)
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
 
-        pthread_t shell_reader;
         pthread_create(&shell_reader, NULL, read_shell, k);
 
         global_render(k);

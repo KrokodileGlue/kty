@@ -2,6 +2,7 @@
 #define FRAME_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include <GL/glew.h>
 
@@ -54,6 +55,7 @@ struct frame {
         int top, bot; /* Required for tsetscroll */
         struct cursor c, altcursor;
         struct cell **line;
+        bool *linewrapped;
 
         int shell_done; /* bazinga */
 

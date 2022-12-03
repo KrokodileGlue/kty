@@ -9,6 +9,9 @@
 
 /* TODO: This is one of the most concerning. */
 #define NUM_CELL 32000
+
+/* TODO: Make this dynamic. */
+#define MAX_SPRITES_IN_FONT 1000
 #define LINE_SPACING 4
 
 /* How long could an escape sequence possibly be. */

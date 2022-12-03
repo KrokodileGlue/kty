@@ -66,7 +66,8 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
                         _printf("%d,%d\n", *cw, *ch);
                 }
 
-                _printf("Loading font %s\n", path[i]);
+                _printf("Loading font %s\n", path[i].path);
+
                 m->fonts[m->num_fonts++] = (struct font){
                         .path = path[i].path,
                         .face = face,
