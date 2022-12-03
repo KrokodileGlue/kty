@@ -45,6 +45,7 @@ enum {
         MODE_CURSOR_VISIBLE = 1,
         MODE_CRLF           = 1 << 1,
         MODE_APPCURSOR      = 1 << 2,
+        MODE_WRAP           = 1 << 3,
 };
 
 struct frame {

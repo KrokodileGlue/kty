@@ -65,6 +65,9 @@ void handle_terminal_mode(struct frame *f, int set)
         case 1:                 /* DECCKM - Cursor key */
                 mode |= MODE_APPCURSOR;
                 break;
+        case 7:                 /* DECAWM - Autowrap Mode */
+                mode |= MODE_WRAP;
+                break;
         case 25: /* Make cursor visible */
                 mode |= MODE_CURSOR_VISIBLE;
                 break;

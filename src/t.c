@@ -48,7 +48,7 @@ void tresize(struct frame *f, int col, int row)
         for (int i = f->row; i < row; i++) {
                 f->line[i] = calloc(col, sizeof *f->line[i]);
                 f->linelen[i] = col;
-                f->lineend[i] = 0;
+                f->lineend[i] = -1;
         }
 
         for (int i = 0; i < row; i++) {
@@ -81,6 +81,9 @@ void tprintc(struct frame *f, uint32_t c)
                 tnewline(f, diff);
         }
 
+        if ((f->mode & MODE_WRAP) && (f->c.mode & CURSOR_WRAPNEXT))
+                tnewline(f, 1);
+
         if (f->c.x >= f->linelen[f->c.y]) {
                 int y = f->c.y;
                 f->line[y] = realloc(f->line[y], 2 * f->linelen[y] * sizeof **f->line);
@@ -88,8 +91,10 @@ void tprintc(struct frame *f, uint32_t c)
                 f->linelen[f->c.y] *= 2;
         }
 
-        if (f->c.x > f->lineend[f->c.y])
+        if (f->c.x > f->lineend[f->c.y]) {
                 f->lineend[f->c.y] = f->c.x;
+                _printf("lineend[%d] = %d\n", f->c.y, f->lineend[f->c.y]);
+        }
 
         f->line[f->c.y][f->c.x++] = (struct cell){
                 .c = c,
@@ -122,6 +127,9 @@ void tprintc(struct frame *f, uint32_t c)
 
                 f->line[f->c.y][f->c.x++] = (struct cell){ .mode = CELL_DUMMY };
         }
+
+        if (f->c.x % f->col == 0)
+                f->c.mode |= CURSOR_WRAPNEXT;
 
         f->font->dirty_display = 1;
 }
@@ -156,7 +164,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
                                 .bg = -1,
                         };
                 if (f->lineend[i] >= x0 && f->lineend[i] <= _x1) {
-                        f->lineend[i] = 0;
+                        f->lineend[i] = -1;
                         for (int j = x0 - 1; j >= 0; j--)
                                 if (f->line[i][j].c) {
                                         f->lineend[i] = j;
@@ -171,26 +179,22 @@ void tmoveto(struct frame *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
 
-        int miny, maxy;
+        int miny = 0, maxy = f->row - 1;
 
         if (f->c.state & CURSOR_ORIGIN) {
                 miny = f->top;
                 maxy = f->bot;
-        } else {
-                miny = 0;
-                maxy = f->row - 1;
         }
 
-        f->c.state &= ~CURSOR_WRAPNEXT;
-        f->c.x = limit(&x, 0, f->col - 1);
         f->c.y = limit(&y, miny, maxy);
+        f->c.x = x;
         f->font->dirty_display = 1;
 }
 
 void tmoveato(struct frame *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
-        tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top: 0));
+        tmoveto(f, x, y + ((f->c.state & CURSOR_ORIGIN) ? f->top : 0));
 }
 
 void tsetscroll(struct frame *f, int top, int bot)

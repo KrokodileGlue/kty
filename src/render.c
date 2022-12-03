@@ -431,15 +431,15 @@ void render_frame(struct font_renderer *r, struct frame *f)
                 int lastline = 0;
 
                 for (int i = f->row - 1; i >= 0; i--)
-                        if (f->lineend[i]) {
+                        if (f->lineend[i] >= 0) {
                                 lastline = i;
                                 break;
                         }
 
                 for (int i = 0; i < lastline; i++)
-                        totaloffset += f->lineend[i] / f->col;
+                        totaloffset += (f->lineend[i] + 1) / f->col;
 
-                if (totaloffset + lastline > f->row)
+                if (totaloffset + lastline >= f->row)
                         totaloffset = -(totaloffset + lastline - f->row) - 1;
                 else
                         totaloffset = 0;
