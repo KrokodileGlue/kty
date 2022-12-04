@@ -8,6 +8,7 @@
 #include <stdlib.h>                    /* realloc, atoi, calloc */
 #include <string.h>                    /* memmove, memset */
 #include <wchar.h>                     /* wcwidth */
+#include <unistd.h>
 
 #include "esc.h"                       /* resetcsi, resetesc, csihandle */
 #include "font.h"                      /* cell, CELL_BOLD, CELL_DUMMY */
@@ -62,19 +63,13 @@ void tresize(struct frame *f, int col, int row)
         bool wrapped[row];
         memset(wrapped, 0, sizeof wrapped);
 
-        for (int i = 0; i < f->row; i++)
-                _printf("  [%d] = %d\n", i, f->linewrapped[i]);
-
         if (col > f->col) {
                 for (int i = 0; i < row; i++) {
-                        _printf("processing expansion at line %d\n", i);
                         struct { int x, y; } a = { 0, i }, b = a;
 
                         int endofblock = i;
 
                         while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
-
-                        int numlines = endofblock - i + 1;
 
                         int lastlineupdated = a.y;
 
@@ -93,7 +88,6 @@ void tresize(struct frame *f, int col, int row)
                                 b.x++;
 
                                 if (a.x == col) {
-                                        _printf("marking %d as wrapped\n", a.y);
                                         wrapped[a.y] = true;
                                         a.x = 0;
                                         a.y++;
@@ -110,23 +104,17 @@ void tresize(struct frame *f, int col, int row)
                                 }
                         }
 
-                        for (int j = i; j < lastlineupdated; j++) {
-                                _printf("wrapping %d\n", j);
+                        for (int j = i; j < lastlineupdated; j++)
                                 wrapped[j] = true;
-                        }
 
-                        for (int j = lastlineupdated; j <= a.y; j++) {
-                                _printf("unwrapping %d\n", j);
+                        for (int j = lastlineupdated; j <= a.y; j++)
                                 wrapped[j] = false;
-                        }
 
                         for (int j = 0; j <= a.y; j++) {
                                 f->linewrapped[j] = false;
                         }
 
-                        _printf("lastlineupdated = %d, endofblock = %d\n", lastlineupdated, endofblock);
                         for (int j = 0; j < endofblock - lastlineupdated; j++) {
-                                _printf("scrolling up %d\n", lastlineupdated + 1);
                                 tscrollup(f, lastlineupdated + 1, 1);
                                 if (f->c.y > lastlineupdated + 1) f->c.y--;
                         }
@@ -156,7 +144,6 @@ void tresize(struct frame *f, int col, int row)
                         struct cell line[f->col];
                         memcpy(line, f->line[i], sizeof line);
 
-                        _printf("eol: %d\n", eol);
                         if (!f->linewrapped[a.y] && eol >= col) {
                                 for (int j = 0; j <= eol; j++) {
                                         f->line[a.y][a.x] = line[b.x];
@@ -177,10 +164,8 @@ void tresize(struct frame *f, int col, int row)
                                         }
                                 }
 
-                                for (int j = i; j < a.y; j++) {
-                                        _printf("single long line %d\n", j);
+                                for (int j = i; j < a.y; j++)
                                         wrapped[j] = true;
-                                }
 
                                 i = a.y;
                                 continue;
@@ -197,8 +182,6 @@ void tresize(struct frame *f, int col, int row)
                         int endofblock = i;
 
                         while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
-
-                        _printf("re-wrapping a block of long lines %d-%d\n", i, endofblock - 1);
 
                         int numlines = endofblock - i + 1;
 
@@ -242,7 +225,6 @@ void tresize(struct frame *f, int col, int row)
                                 }
                         }
 
-                        _printf("re-wrapping wrapped[%d-%d]\n", i, a.y - 1);
                         for (int j = i; j < a.y; j++)
                                 wrapped[j] = true;
 
@@ -599,14 +581,14 @@ void tputc(struct frame *f, uint32_t c)
                                  * `f->esc_buf`, just parse it and execute it.
                                  */
                                 csiparse(f);
-                                csihandle(f);
+                                tcsihandle(f);
                                 resetcsi(f);
                                 resetesc(f);
                         }
                         return;
                 } else if (f->esc & ESC_ALTCHARSET) {
                         _printf("TODO: Handle alternate charsets\n");
-                } else if (eschandle(f, c))
+                } else if (teschandle(f, c))
                         resetesc(f);
         } else {
                 tprintc(f, c);
@@ -775,9 +757,205 @@ int twrite(struct frame *f, const char *buf, int buflen)
                 /* TODO: Support commands which alter support for UTF-8. */
                 uint32_t c;
                 if (!(charsize = utf8decode(buf + n, buflen - n, &c))) break;
-
                 tputc(f, c);
         }
 
         return n;
+}
+
+/*
+ * Handles the 'h' escape code.
+ */
+void handle_terminal_mode(struct frame *f, int set, bool priv)
+{
+        int mode = 0;
+
+        if (priv) {
+                switch (f->csi.arg[0]) {
+                case 1:                 /* DECCKM - Cursor key */
+                        mode |= MODE_APPCURSOR;
+                        break;
+                case 7:                 /* DECAWM - Autowrap Mode */
+                        mode |= MODE_WRAP;
+                        break;
+                case 1049: /* Swap screen and cursor */
+                        tcursor(f, set);
+                        /* FALLTHROUGH */
+                case 47: /* swap screen */
+                case 1047:
+                        if (f->mode & MODE_ALTSCREEN)
+                                tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        if (set ^ !!(f->mode & MODE_ALTSCREEN))
+                                tswapscreen(f);
+                        if (f->csi.arg[0] != 1049)
+                                break;
+                        /* FALLTHROUGH */
+                case 1048:
+                        tcursor(f, set);
+                        break;
+                case 25: /* Make cursor visible */
+                        mode |= MODE_CURSOR_VISIBLE;
+                        break;
+                }
+        }
+
+        if (set) f->mode |= mode;
+        else f->mode &= ~mode;
+}
+
+#define DEFAULT(x, y) (f->csi.narg ? (x) : (y))
+
+void tcsihandle(struct frame *f)
+{
+        switch (f->csi.mode[0]) {
+        case '@': /* ICH -- Insert <n> blank char */
+                tinsertblank(f, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+        case 'A': /* Move cursor up n lines */
+                tmoveto(f, f->c.x, f->c.y - DEFAULT(f->csi.arg[0], 1));
+                break;
+        case 'B': /* Move cursor down n lines */
+                tmoveto(f, f->c.x, f->c.y + DEFAULT(f->csi.arg[0], 1));
+                break;
+        case 'C': /* Move cursor right n columns */
+                tmoveto(f, f->c.x + DEFAULT(f->csi.arg[0], 1), f->c.y);
+                break;
+        case 'c':
+                write(f->master, VT_IDENTITY, strlen(VT_IDENTITY));
+                break;
+        case 'D': /* Move cursor left n columns */
+                tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);
+                break;
+        case 'h': /* Set terminal mode */
+                handle_terminal_mode(f, 1, f->csi.priv);
+                break;
+        case 'H': /* CUP - Move cursor too coordinates */
+                if (!f->csi.narg)
+                        tmoveto(f, 0, 0);
+                else
+                        tmoveto(f, f->csi.arg[1] - 1, f->csi.arg[0] - 1);
+                break;
+        case 'J': /* Clear screen */
+                switch (f->csi.arg[0]) {
+                case 0: /* below */
+                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                        if (f->c.y < f->row - 1) {
+                                tclearregion(f, 0, f->c.y + 1, f->col - 1, f->row - 1);
+                        }
+                        break;
+                case 1: /* above */
+                        if (f->c.y > 1)
+                                tclearregion(f, 0, 0, f->col - 1, f->c.y - 1);
+                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
+                        break;
+                case 2: /* all */
+                        tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        break;
+                default:
+                        _printf("Unknown clear argument %ld\n", f->csi.arg[0]);
+                        break;
+                }
+                break;
+        case 'K': /* EL - Clear line */
+                if (!f->csi.narg || f->csi.arg[0] == 0)
+                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
+                else if (f->csi.arg[0] == 1)
+                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
+                else if (f->csi.arg[0] == 2)
+                        tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
+                break;
+        case 'l': /* Reset terminal mode */
+                handle_terminal_mode(f, 0, f->csi.priv);
+                break;
+        case 'L': /* IL - Insert n blank lines */
+                tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+        case 'm':
+                tsetattr(f);
+                break;
+        case 'M': /* DL - Delete n lines */
+                tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+        case 'P': /* DCH - Delete n chars */
+                tdeletechar(f, f->csi.narg ? f->csi.arg[0] : 1);
+                break;
+	case 'S': /* SU - Scroll n line up */
+		tscrollup(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
+	case 's': /* DECSC - Save cursor position */
+	case 'u': /* DECRC - Restore cursor position */
+		tcursor(f, f->csi.arg[0] == 's');
+		break;
+	case 'T': /* SD - Scroll n line down */
+		tscrolldown(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		break;
+        case 'r': /* DECSTBM - Set scroll region */
+                if (!f->csi.narg) tsetscroll(f, 0, f->row - 1);
+                else tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
+                tmoveato(f, 0, 0);
+                break;
+        case 'd': /* VPA - Move to <row> */
+                tmoveato(f, f->c.x, (f->csi.narg ? f->csi.arg[0] : 1) - 1);
+                break;
+        case 'G': /* CHA - Move to <col> */
+        case '`': /* HPA */
+                tmoveato(f, (f->csi.narg ? f->csi.arg[0] : 1) - 1, f->c.y);
+                break;
+        case 'X': /* ECH - Erase n chars */
+                tclearregion(f, f->c.x, f->c.y,
+                             f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
+                break;
+        case ' ':
+                if (f->csi.arg[0] < 0 || f->csi.arg[0] > CURSOR_STYLE_MAX)
+                        goto unhandled;
+                if (f->csi.mode[1] == 'q') {
+                        f->cursor_style = f->csi.arg[0];
+                        f->font->dirty_display = 1;
+                        break;
+                }
+        default:
+                goto unhandled;
+        }
+
+        return;
+unhandled:
+        _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
+}
+
+int teschandle(struct frame *f, uint32_t c)
+{
+        switch (c) {
+        case '[':
+                f->esc |= ESC_CSI;
+                return 0;
+        case 'P': /* DCS -- Device Control String */
+        case '_': /* APC -- Application Program Command */
+        case '^': /* PM -- Privacy Message */
+        case ']': /* OSC -- Operating System Command */
+        case 'k': /* old title set compatibility */
+                tstrsequence(f, c);
+                return 0;
+        case 'M': /* RI - Reverse index */
+                if (f->c.y == f->top) {
+                        tscrolldown(f, f->top, 1);
+                } else {
+                        tmoveto(f, f->c.x, f->c.y - 1);
+                }
+                return 1;
+        case '(': /* GZD4 - Set primary charset G0 */
+        case ')': /* G1D4 - Set secondary charset G1 */
+        case '*': /* G2D4 - Set tertiary charset G2 */
+        case '+': /* G3D4 - Set quaternary charset G3 */
+                f->icharset = c - '(';
+                f->esc |= ESC_ALTCHARSET;
+                return 0;
+        case '\\': /* ST - String terminator */
+                if (f->esc & ESC_STR_END)
+                        tstrhandle(f);
+                break;
+        default:
+                _printf("\e[31mUnhandled escape %c\e[0m\n", (unsigned char)c);
+        }
+
+        return 1;
 }

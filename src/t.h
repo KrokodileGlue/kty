@@ -25,5 +25,8 @@ void tstrhandle(struct frame *f);
 void tsetattr(struct frame *f);
 void tcursor(struct frame *f, bool save);
 void tswapscreen(struct frame *f);
+void tcsihandle(struct frame *f);
+int teschandle(struct frame *f, uint32_t c);
+void handle_terminal_mode(struct frame *f, int set, bool priv);
 
 #endif
