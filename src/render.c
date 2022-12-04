@@ -228,12 +228,12 @@ struct color get_color_from_index(struct font_renderer *r, int i)
  * Renders a `struct cell` into the current termbuffer.
  */
 int render_cell(struct font_renderer *r, struct cell g,
-                 int x0, int y0, int cw, int ch)
+                int x0, int y0, int cw, int ch, int font_size)
 {
         if (g.mode & CELL_DUMMY) return 0;
 
         uint32_t c = g.c;
-        struct sprite *sprite = get_sprite(r->m, g.c, g.mode);
+        struct sprite *sprite = get_sprite(r->m, g.c, g.mode, font_size);
 
         if (!sprite) {
                 fprintf(stderr, "No cell found for U+%x\n", c);
@@ -343,17 +343,17 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct term *f)
+void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch)
 {
         int x = f->c.x, y = f->c.y;
 
         float sx = 2.0 / (float)r->width;
         float sy = 2.0 / (float)r->height;
 
-        float w = -1 + (f->cw * x) * sx;
-        float n = 1 - (f->ch * y) * sy - LINE_SPACING * y * sy;
-        float s = n - f->ch * sy - LINE_SPACING * sy;
-        float e = w + f->cw * sx;
+        float w = -1 + (cw * x) * sx;
+        float n = 1 - (ch * y) * sy - LINE_SPACING * y * sy;
+        float s = n - ch * sy - LINE_SPACING * sy;
+        float e = w + cw * sx;
         /* TODO: Default cursor color customization. */
         struct color c = (struct color){ 0, 0.5, 0.5 };
 
@@ -364,7 +364,7 @@ void render_cursor(struct font_renderer *r, struct term *f)
                 case CURSOR_STYLE_STEADY_BLOCK:
                         /* Thicken the cursor. */
                         if (f->line[y][x].mode & CELL_WIDE)
-                                e += f->cw * sx;
+                                e += cw * sx;
                         break;
                 case CURSOR_STYLE_BLINKING_UNDERLINE:
                 case CURSOR_STYLE_STEADY_UNDERLINE:
@@ -428,11 +428,11 @@ void render_term(struct font_renderer *r, struct term *f)
                 for (int i = 0; i < f->row; i++)
                         for (int j = 0; j < f->col; j++)
                                 if (f->line[i][j].c)
-                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch);
+                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch, f->font_size);
 
                 /* Add the cursor to the decoration VBO. */
                 if (f->mode & MODE_CURSOR_VISIBLE)
-                        render_cursor(r, f);
+                        render_cursor(r, f, f->cw, f->ch);
         }
 
         /* Render the quads. */

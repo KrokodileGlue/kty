@@ -102,6 +102,19 @@ struct term *term_new(char **env, struct font_renderer *r)
                 _printf("Framebuffer status: %u\n", status);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        /*
+         * Hacky; this assumes that the first font in the list is the
+         * user's primary font and that the font is monospace.
+         */
+        FT_Face face = r->m->fonts[0].face;
+        FT_Set_Pixel_Sizes(face, 0, 12);
+        FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
+        FT_GlyphSlot slot = face->glyph;
+        f->cw = slot->metrics.horiAdvance / 64.0;
+        f->ch = slot->metrics.vertAdvance / 64.0;
+
+        f->font_size = 12;
+
         return f;
 }
 

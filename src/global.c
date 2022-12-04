@@ -13,7 +13,7 @@
 #include <string.h>             /* memcpy */
 #include <wchar.h>              /* wcwidth */
 #include "font.h"               /* font, cell, CELL_DUMMY, CELL_INVERSE */
-#include "term.h"              /* term, window, term_new, cursor, MOD... */
+#include "term.h"               /* term, window, term_new, cursor, MOD... */
 #include "render.h"             /* font_renderer */
 #include "sprite.h"             /* sprite */
 #include "util.h"               /* color, LINE_SPACING, NUM_CELL, FONT_... */
@@ -279,32 +279,23 @@ static struct color color256[256] = {
         { 0.960000, 0.960000, 0.960000 }, /* 255 - #f4f4f4 */
 };
 
-int global_init(struct global *k, char **env, void (*window_title_callback)(char *))
+int global_init(struct global *k, char **env)
 {
-        int cw, ch;
-        font_manager_init(&k->m, &cw, &ch);
         memcpy(&k->color256, color256, sizeof k->color256);
+
+        font_manager_init(&k->m);
         render_init(&k->font, &k->m, k->color256);
-
-        struct term *f = term_new(env, &k->font);
-
-        f->focused = 1;
-        f->cw = cw;
-        f->ch = ch;
-
-        k->term = f;
-
-        k->window_title_callback = window_title_callback;
-        k->focus = f;
+        window_init(&k->window, k, env);
+        k->focus = k->window.term;
 
         return 0;
 }
 
 int global_notify_title_change(struct term *f)
 {
-        struct global *k = f->k;
-        if (f == k->focus)
-                k->window_title_callback(f->title);
+        /* struct global *k = f->k; */
+        /* if (f == k->focus) */
+        /*         k->window_title_callback(f->title); */
         return 0;
 }
 
@@ -312,7 +303,7 @@ int global_render(struct global *f)
 {
         /* TODO */
         struct font_renderer *r = &f->font;
-        render_term(&f->font, f->term);
-        render_quad(r, f->term->tex_color_buffer);
+        render_term(&f->font, f->window.term);
+        render_quad(r, f->window.term[0].tex_color_buffer);
         return 0;
 }

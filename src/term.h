@@ -46,6 +46,16 @@ enum {
 
 struct term {
         struct font_renderer *font;
+
+        /* Input buffer */
+        char buf[BUFSIZ];
+        int buflen;
+
+        int font_size;
+
+        pthread_t thread;
+
+        /* Character width and height */
         int cw, ch;
 
         /* PTY */
@@ -84,7 +94,6 @@ struct term {
 
         char *title;
         int icharset;
-        int focused;
 
         enum {
                 CURSOR_STYLE_BLINKING_BLOCK,

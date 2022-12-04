@@ -5,7 +5,6 @@
 #define MAX_FONTS 16
 #define WINDOW_WIDTH 600
 #define WINDOW_HEIGHT 700
-#define FONT_SIZE 12
 
 /* TODO: This is one of the most concerning. */
 #define NUM_CELL 32000

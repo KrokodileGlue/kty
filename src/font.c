@@ -10,7 +10,7 @@ int is_color_font(FT_Face face)
         return !!length;
 }
 
-int font_manager_init(struct font_manager *m, int *cw, int *ch)
+int font_manager_init(struct font_manager *m)
 {
         /* TODO: Get fonts from command line options. */
 
@@ -41,31 +41,6 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
                         return 1;
                 }
 
-                /*
-                 * Hacky; this assumes that the first font in the list is the
-                 * user's primary font and that the font is monospace.
-                 */
-                if (!i) {
-                        FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
-
-                        /*
-                         * Whatever font is being used for an ASCII character
-                         * like `x` is prooooobably the right font to base the
-                         * grid size on.
-                         */
-                        FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
-                        FT_GlyphSlot slot = face->glyph;
-
-                        /*
-                         * We need to keep the width and height independent of
-                         * font used to render non-ascii characters because we
-                         * have to be able to treat the terminal like a grid.
-                         */
-                        *cw = slot->metrics.horiAdvance / 64.0;
-                        *ch = slot->metrics.vertAdvance / 64.0;
-                        _printf("%d,%d\n", *cw, *ch);
-                }
-
                 _printf("Loading font %s\n", path[i].path);
 
                 m->fonts[m->num_fonts++] = (struct font){
@@ -86,7 +61,7 @@ int font_manager_init(struct font_manager *m, int *cw, int *ch)
         return 0;
 }
 
-struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
+struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font_size)
 {
         for (int i = 0; i < r->num_cell; i++) {
                 if (r->cell[i].c == c &&
@@ -107,7 +82,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                         continue;
 
                 FT_Face face = fo->face;
-                FT_Set_Pixel_Sizes(face, 0, FONT_SIZE);
+                FT_Set_Pixel_Sizes(face, 0, font_size);
 
                 uint32_t cell_index = FT_Get_Char_Index(face, c);
                 if (!cell_index) continue;
@@ -116,10 +91,10 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                         if (!face->num_fixed_sizes) return NULL;
 
                         int best_match = 0;
-                        int diff = abs(FONT_SIZE - face->available_sizes[0].width);
+                        int diff = abs(font_size - face->available_sizes[0].width);
 
                         for (int i = 1; i < face->num_fixed_sizes; i++) {
-                                int ndiff = abs(FONT_SIZE - face->available_sizes[i].width);
+                                int ndiff = abs(font_size - face->available_sizes[i].width);
                                 if (ndiff < diff) {
                                         best_match = i;
                                         diff = ndiff;
@@ -138,8 +113,8 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode)
                 break;
         }
 
-        if (!font && mode) return get_sprite(r, c, 0);
-        if (!font && c != 0x25a1) return get_sprite(r, 0x25a1, 0);
+        if (!font && mode) return get_sprite(r, c, 0, font_size);
+        if (!font && c != 0x25a1) return get_sprite(r, 0x25a1, 0, font_size);
         if (!font) return NULL;
 
         FT_GlyphSlot slot = font->face->glyph;

@@ -8,7 +8,6 @@
 #include <ctype.h>
 
 #include <unistd.h>
-#include <pthread.h> /* TODO: Windows support. */
 #include <sys/ioctl.h>
 
 #include <GL/glew.h>
@@ -19,22 +18,18 @@
 #include "utf8.h"
 #include "t.h"
 #include "util.h"
+#include "window.h"
 
-pthread_t shell_reader;
 GLFWwindow *window;
 struct global *k;
 
 void character_callback(GLFWwindow *window, uint32_t c)
 {
         (void)window;
-
-        /* TODO */
-        struct term *f = k->focus;
-
         uint8_t buf[4];
         unsigned len = 0;
         utf8encode(c, buf, &len);
-        write(f->master, buf, len);
+        write(k->focus->master, buf, len);
 }
 
 static struct key {
@@ -204,15 +199,15 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 {
         (void)window, (void)mods, (void)scancode;
 
-        struct term *f = k->focus;
-
         if (action == GLFW_RELEASE) return;
 
         if (key == GLFW_KEY_INSERT && mods & GLFW_MOD_SHIFT) {
                 const char *s = glfwGetClipboardString(window);
-                write(f->master, s, strlen(s));
+                write(k->focus->master, s, strlen(s));
                 return;
         }
+
+        struct term *f = k->focus;
 
         /*
          * The GLFW keycode things are hardcoded
@@ -258,67 +253,9 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
-        /*
-         * TODO: Obviously to support multiple terms in a single window this
-         * will need to be generalized so that it updates all of the terms.
-         * That's a relatively complex tiling window manager type of operation,
-         * so for now I'll just assume one term.
-         */
-
         (void)window;
-
-        /* TODO */
-        struct term *f = k->focus;
-
-        f->font->width = width, f->font->height = height;
-        f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
-
-        glBindTexture(GL_TEXTURE_2D, f->tex_color_buffer);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
-                GL_RGB, GL_UNSIGNED_BYTE, NULL);
-
-        tresize(f, width / f->cw, height / (f->ch + LINE_SPACING));
-
-        struct winsize ws = {
-                .ws_col = f->col,
-                .ws_row = f->row,
-        };
-
-        if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
-                perror("ioctl");
-}
-
-void *read_shell(void *arg)
-{
-        (void)arg;
-        /* TODO */
-        struct term *f = k->term;
-
-        /* TODO: Put these into the term. */
-        static char buf[BUFSIZ];
-        static int buflen = 0;
-        int ret, written;
-
-        while (1) {
-                ret = read(f->master, buf + buflen, sizeof buf / sizeof *buf - buflen);
-
-                if (ret <= 0) break;
-
-                buflen += ret;
-                written = twrite(f, buf, buflen);
-                buflen -= written;
-                if (buflen > 0)
-                        memmove(buf, buf + written, buflen);
-        }
-
-        f->shell_done = true;
-
-        return NULL;
-}
-
-void window_title_callback(char *title)
-{
-        glfwSetWindowTitle(window, title);
+        k->font.width = width, k->font.height = height;
+        window_place(&k->window, 0, 0, width, height);
 }
 
 int main(int argc, char **argv, char **env)
@@ -357,18 +294,16 @@ int main(int argc, char **argv, char **env)
         k = calloc(1, sizeof *k);
 
         /* This will create a default term. */
-        global_init(k, env, window_title_callback);
+        global_init(k, env);
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
 
-        pthread_create(&shell_reader, NULL, read_shell, k);
-
         global_render(k);
         glfwSwapBuffers(window);
 
-        while (!glfwWindowShouldClose(window) && !k->term->shell_done) {
+        while (!glfwWindowShouldClose(window)) {
                 global_render(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
