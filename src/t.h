@@ -2,6 +2,7 @@
 #define T_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 struct frame;
 
@@ -22,6 +23,7 @@ void tinsertblank(struct frame *f, int n);
 void tstrsequence(struct frame *f, unsigned char c);
 void tstrhandle(struct frame *f);
 void tsetattr(struct frame *f);
-void tcursor(struct frame *f);
+void tcursor(struct frame *f, bool save);
+void tswapscreen(struct frame *f);
 
 #endif

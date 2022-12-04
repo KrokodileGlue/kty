@@ -57,20 +57,37 @@ void csiparse(struct frame *f)
 /*
  * Handles the 'h' escape code.
  */
-void handle_terminal_mode(struct frame *f, int set)
+void handle_terminal_mode(struct frame *f, int set, bool priv)
 {
         int mode = 0;
 
-        switch (f->csi.arg[0]) {
-        case 1:                 /* DECCKM - Cursor key */
-                mode |= MODE_APPCURSOR;
-                break;
-        case 7:                 /* DECAWM - Autowrap Mode */
-                mode |= MODE_WRAP;
-                break;
-        case 25: /* Make cursor visible */
-                mode |= MODE_CURSOR_VISIBLE;
-                break;
+        if (priv) {
+                switch (f->csi.arg[0]) {
+                case 1:                 /* DECCKM - Cursor key */
+                        mode |= MODE_APPCURSOR;
+                        break;
+                case 7:                 /* DECAWM - Autowrap Mode */
+                        mode |= MODE_WRAP;
+                        break;
+                case 1049: /* Swap screen and cursor */
+                        tcursor(f, set);
+                        /* FALLTHROUGH */
+                case 47: /* swap screen */
+                case 1047:
+                        if (f->mode & MODE_ALTSCREEN)
+                                tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        if (set ^ !!(f->mode & MODE_ALTSCREEN))
+                                tswapscreen(f);
+                        if (f->csi.arg[0] != 1049)
+                                break;
+                        /* FALLTHROUGH */
+                case 1048:
+                        tcursor(f, set);
+                        break;
+                case 25: /* Make cursor visible */
+                        mode |= MODE_CURSOR_VISIBLE;
+                        break;
+                }
         }
 
         if (set) f->mode |= mode;
@@ -101,7 +118,7 @@ void csihandle(struct frame *f)
                 tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
         case 'h': /* Set terminal mode */
-                handle_terminal_mode(f, 1);
+                handle_terminal_mode(f, 1, f->csi.priv);
                 break;
         case 'H': /* CUP - Move cursor too coordinates */
                 if (!f->csi.narg)
@@ -139,7 +156,7 @@ void csihandle(struct frame *f)
                         tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
                 break;
         case 'l': /* Reset terminal mode */
-                handle_terminal_mode(f, 0);
+                handle_terminal_mode(f, 0, f->csi.priv);
                 break;
         case 'L': /* IL - Insert n blank lines */
                 tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
@@ -158,7 +175,7 @@ void csihandle(struct frame *f)
 		break;
 	case 's': /* DECSC - Save cursor position */
 	case 'u': /* DECRC - Restore cursor position */
-		tcursor(f);
+		tcursor(f, f->csi.arg[0] == 's');
 		break;
 	case 'T': /* SD - Scroll n line down */
 		tscrolldown(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);

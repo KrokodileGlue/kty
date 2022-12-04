@@ -27,11 +27,12 @@ int limit(int *x, int y, int z)
 /*
  * Swap the saved cursor and the real cursor.
  */
-void tcursor(struct frame *f)
+void tcursor(struct frame *f, bool save)
 {
-        struct cursor tmp = f->altcursor;
-        f->altcursor = f->c;
-        f->c = tmp;
+        if (save)
+                f->altcursor = f->c;
+        else
+                f->c = f->altcursor;
 }
 
 void tresize(struct frame *f, int col, int row)
@@ -41,11 +42,11 @@ void tresize(struct frame *f, int col, int row)
         /* Save a little effort. */
         if (f->col == col && f->row == row) return;
 
-        f->line = realloc(f->line, row * sizeof *f->line);
-        f->linewrapped = realloc(f->linewrapped, row * sizeof *f->linewrapped);
-
         limit(&f->c.x, 0, col - 1);
         limit(&f->c.y, 0, row - 1);
+
+        f->line = realloc(f->line, row * sizeof *f->line);
+        f->linewrapped = realloc(f->linewrapped, row * sizeof *f->linewrapped);
 
         for (int i = f->row; i < row; i++) {
                 f->line[i] = calloc(f->col, sizeof *f->line[i]);
@@ -171,6 +172,7 @@ void tresize(struct frame *f, int col, int row)
                                                 if (f->c.y >= a.y) f->c.y++;
                                                 a.x = 0;
                                                 a.y++;
+                                                if (a.y >= row) break;
                                                 memset(f->line[a.y], 0, col * sizeof *f->line);
                                         }
                                 }
@@ -250,13 +252,18 @@ void tresize(struct frame *f, int col, int row)
 
         memcpy(f->linewrapped, wrapped, sizeof wrapped);
 
+        limit(&f->c.x, 0, col - 1);
+        limit(&f->c.y, 0, row - 1);
+
         f->col = col;
         f->row = row;
+
         f->font->dirty_display = 1;
 }
 
 void tprintc(struct frame *f, uint32_t c)
 {
+        _printf("U+%"PRIX32"\n", c);
         int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
 
         if (f->c.x >= f->col) {
@@ -482,7 +489,7 @@ void tstrhandle(struct frame *f)
                                 frame_title(f, f->esc_str.arg[1]);
                         break;
                 default:
-                        _printf("\e[34mUnhandled `[` style string escape sequence\e[39m\n");
+                        _printf("\e[34mUnhandled `]` style string escape sequence\e[39m\n");
                         break;
                 }
                 break;
@@ -668,6 +675,34 @@ void thandlegraphicmode(struct frame *f, long arg)
                 fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
                 break;
         }
+}
+
+void tswapscreen(struct frame *f)
+{
+        struct cell **tmp = f->line;
+        bool *wraptmp = f->linewrapped;
+
+        f->line = f->linealt;
+        f->linealt = tmp;
+
+        f->linewrapped = f->linewrappedalt;
+        f->linewrappedalt = wraptmp;
+
+        f->mode ^= MODE_ALTSCREEN;
+        f->font->dirty_display = 1;
+
+        int tmpint = f->altcol;
+        f->altcol = f->col;
+        f->col = tmpint;
+
+        tmpint = f->altrow;
+        f->altrow = f->row;
+        f->row = tmpint;
+
+        tresize(f, f->altcol, f->altrow);
+
+        f->altrow = f->row;
+        f->altcol = f->col;
 }
 
 #define TRUECOLOR(r,g,b) ((\

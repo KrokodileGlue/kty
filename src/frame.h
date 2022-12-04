@@ -41,6 +41,7 @@ enum {
         MODE_CRLF           = 1 << 1,
         MODE_APPCURSOR      = 1 << 2,
         MODE_WRAP           = 1 << 3,
+        MODE_ALTSCREEN      = 1 << 4,
 };
 
 struct frame {
@@ -54,8 +55,9 @@ struct frame {
         int col, row;
         int top, bot; /* Required for tsetscroll */
         struct cursor c, altcursor;
-        struct cell **line;
-        bool *linewrapped;
+        struct cell **line, **linealt;
+        bool *linewrapped, *linewrappedalt;
+        int altrow, altcol;
 
         int shell_done; /* bazinga */
 
@@ -97,6 +99,7 @@ struct frame {
 
         struct global *k;
 
+        /* TODO: Move this into the global state. */
         GLuint framebuffer;
         GLuint tex_color_buffer;
 };
