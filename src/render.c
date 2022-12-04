@@ -6,7 +6,7 @@
 #include <stdio.h>
 
 #include "gl.h"                 /* bind_attribute_to_program, bind_unifo... */
-#include "frame.h"
+#include "term.h"
 
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256)
 {
@@ -225,7 +225,7 @@ struct color get_color_from_index(struct font_renderer *r, int i)
 }
 
 /*
- * Renders a `struct cell` into the current framebuffer.
+ * Renders a `struct cell` into the current termbuffer.
  */
 int render_cell(struct font_renderer *r, struct cell g,
                  int x0, int y0, int cw, int ch)
@@ -343,7 +343,7 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct frame *f)
+void render_cursor(struct font_renderer *r, struct term *f)
 {
         int x = f->c.x, y = f->c.y;
 
@@ -407,13 +407,13 @@ void render_quad(struct font_renderer *r, GLuint tex)
         glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void render_frame(struct font_renderer *r, struct frame *f)
+void render_term(struct font_renderer *r, struct term *f)
 {
         glViewport(0, 0, r->width, r->height);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, f->termbuffer);
         glUseProgram(r->program);
-        /* TODO: Clean up the framebuffer. */
+        /* TODO: Clean up the termbuffer. */
 
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);

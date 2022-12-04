@@ -12,7 +12,7 @@
 
 #include "esc.h"                       /* resetcsi, resetesc, csihandle */
 #include "font.h"                      /* cell, CELL_BOLD, CELL_DUMMY */
-#include "frame.h"                     /* frame, cursor, frame::(anonymous) */
+#include "term.h"                     /* term, cursor, term::(anonymous) */
 #include "render.h"                    /* font_renderer */
 #include "utf8.h"                      /* utf8decode, utf8encode */
 #include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
@@ -28,7 +28,7 @@ int limit(int *x, int y, int z)
 /*
  * Swap the saved cursor and the real cursor.
  */
-void tcursor(struct frame *f, bool save)
+void tcursor(struct term *f, bool save)
 {
         if (save)
                 f->altcursor = f->c;
@@ -36,7 +36,7 @@ void tcursor(struct frame *f, bool save)
                 f->c = f->altcursor;
 }
 
-void tresize(struct frame *f, int col, int row)
+void tresize(struct term *f, int col, int row)
 {
         _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
 
@@ -243,7 +243,7 @@ void tresize(struct frame *f, int col, int row)
         f->font->dirty_display = 1;
 }
 
-void tprintc(struct frame *f, uint32_t c)
+void tprintc(struct term *f, uint32_t c)
 {
         _printf("U+%"PRIX32"\n", c);
         int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
@@ -307,7 +307,7 @@ void tprintc(struct frame *f, uint32_t c)
         f->font->dirty_display = 1;
 }
 
-void tinsertblank(struct frame *f, int n)
+void tinsertblank(struct term *f, int n)
 {
         int dst, src, size;
         struct cell *line;
@@ -323,7 +323,7 @@ void tinsertblank(struct frame *f, int n)
         tclearregion(f, src, f->c.y, dst - 1, f->c.y);
 }
 
-void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
+void tclearregion(struct term *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
@@ -344,7 +344,7 @@ void tclearregion(struct frame *f, int x0, int y0, int x1, int y1)
         f->font->dirty_display = 1;
 }
 
-void tmoveto(struct frame *f, int x, int y)
+void tmoveto(struct term *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
 
@@ -360,13 +360,13 @@ void tmoveto(struct frame *f, int x, int y)
         f->font->dirty_display = 1;
 }
 
-void tmoveato(struct frame *f, int x, int y)
+void tmoveato(struct term *f, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
         tmoveto(f, x, y + ((f->c.state & CELL_ORIGIN) ? f->top : 0));
 }
 
-void tsetscroll(struct frame *f, int top, int bot)
+void tsetscroll(struct term *f, int top, int bot)
 {
         limit(&bot, 0, f->row - 1);
         limit(&top, 0, f->row - 1);
@@ -381,7 +381,7 @@ void tsetscroll(struct frame *f, int top, int bot)
         f->bot = bot;
 }
 
-void tscrolldown(struct frame *f, int orig, int n)
+void tscrolldown(struct term *f, int orig, int n)
 {
         _printf("Scrolling %d lines around %d\n", n, orig);
 
@@ -400,7 +400,7 @@ void tscrolldown(struct frame *f, int orig, int n)
         f->font->dirty_display = 1;
 }
 
-void tscrollup(struct frame *f, int orig, int n)
+void tscrollup(struct term *f, int orig, int n)
 {
         _printf("Scrolling %d lines around %d\n", n, orig);
 
@@ -419,7 +419,7 @@ void tscrollup(struct frame *f, int orig, int n)
         f->font->dirty_display = 1;
 }
 
-void tnewline(struct frame *f, int first_col)
+void tnewline(struct term *f, int first_col)
 {
         _printf("tnewline\n");
 
@@ -434,7 +434,7 @@ void tnewline(struct frame *f, int first_col)
         tmoveto(f, first_col ? 0 : f->c.x, y);
 }
 
-void tstrparse(struct frame *f)
+void tstrparse(struct term *f)
 {
         f->esc_str.narg = 0;
         f->esc_str.buf[f->esc_str.len] = 0;
@@ -455,7 +455,7 @@ void tstrparse(struct frame *f)
 /*
  * Parse and execute string escape sequences.
  */
-void tstrhandle(struct frame *f)
+void tstrhandle(struct term *f)
 {
         _printf("\e[33m%.*s\e[39m\n", f->esc_str.len, f->esc_str.buf);
 
@@ -468,7 +468,7 @@ void tstrhandle(struct frame *f)
                 switch (par) {
                 case 0:
                         if (f->esc_str.narg > 1)
-                                frame_title(f, f->esc_str.arg[1]);
+                                term_title(f, f->esc_str.arg[1]);
                         break;
                 default:
                         _printf("\e[34mUnhandled `]` style string escape sequence\e[39m\n");
@@ -485,7 +485,7 @@ void tstrhandle(struct frame *f)
                 _printf("\e[34mTODO: PM - Privacy message\e[39m\n");
                 break;
         case 'k':
-                frame_title(f, f->esc_str.arg[0]);
+                term_title(f, f->esc_str.arg[0]);
                 break;
         default:
                 _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", f->esc_str.type);
@@ -497,7 +497,7 @@ void tstrhandle(struct frame *f)
         f->esc &= ~(ESC_STR | ESC_STR_END);
 }
 
-void tcontrolcode(struct frame *f, uint32_t c)
+void tcontrolcode(struct term *f, uint32_t c)
 {
         _printf("\e[35m\\x%"PRIx32"\e[39m\n", c);
 
@@ -528,7 +528,7 @@ void tcontrolcode(struct frame *f, uint32_t c)
         }
 }
 
-void tdeletechar(struct frame *f, int n)
+void tdeletechar(struct term *f, int n)
 {
         int dst, src, size;
         struct cell *line;
@@ -544,7 +544,7 @@ void tdeletechar(struct frame *f, int n)
         tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
 }
 
-void tputc(struct frame *f, uint32_t c)
+void tputc(struct term *f, uint32_t c)
 {
         /* Here's the legwork of actually interpreting commands. */
 
@@ -595,7 +595,7 @@ void tputc(struct frame *f, uint32_t c)
         }
 }
 
-void thandlegraphicmode(struct frame *f, long arg)
+void thandlegraphicmode(struct term *f, long arg)
 {
         if (arg >= 30 && arg <= 38) {
                 f->c.fg = arg - 30;
@@ -659,7 +659,7 @@ void thandlegraphicmode(struct frame *f, long arg)
         }
 }
 
-void tswapscreen(struct frame *f)
+void tswapscreen(struct term *f)
 {
         struct cell **tmp = f->line;
         bool *wraptmp = f->linewrapped;
@@ -693,7 +693,7 @@ void tswapscreen(struct frame *f)
                 (((b) & 0xFF) << 0)) + 256\
                 )
 
-void tsetattr(struct frame *f)
+void tsetattr(struct term *f)
 {
         if (!f->csi.narg) {
                 thandlegraphicmode(f, 0);
@@ -728,7 +728,7 @@ void tsetattr(struct frame *f)
                 thandlegraphicmode(f, f->csi.arg[i]);
 }
 
-void tstrsequence(struct frame *f, unsigned char c)
+void tstrsequence(struct term *f, unsigned char c)
 {
         switch (c) {
         case 0x90:              /* DCS - Device control string */
@@ -749,7 +749,7 @@ void tstrsequence(struct frame *f, unsigned char c)
         f->esc |= ESC_STR;
 }
 
-int twrite(struct frame *f, const char *buf, int buflen)
+int twrite(struct term *f, const char *buf, int buflen)
 {
         int charsize, n;
 
@@ -766,7 +766,7 @@ int twrite(struct frame *f, const char *buf, int buflen)
 /*
  * Handles the 'h' escape code.
  */
-void handle_terminal_mode(struct frame *f, int set, bool priv)
+void handle_terminal_mode(struct term *f, int set, bool priv)
 {
         int mode = 0;
 
@@ -805,7 +805,7 @@ void handle_terminal_mode(struct frame *f, int set, bool priv)
 
 #define DEFAULT(x, y) (f->csi.narg ? (x) : (y))
 
-void tcsihandle(struct frame *f)
+void tcsihandle(struct term *f)
 {
         switch (f->csi.mode[0]) {
         case '@': /* ICH -- Insert <n> blank char */
@@ -922,7 +922,7 @@ unhandled:
         _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
 }
 
-int teschandle(struct frame *f, uint32_t c)
+int teschandle(struct term *f, uint32_t c)
 {
         switch (c) {
         case '[':

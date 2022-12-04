@@ -1,6 +1,6 @@
 #define _XOPEN_SOURCE 600
 
-#include "frame.h"
+#include "term.h"
 
 #include <fcntl.h>                     /* open, O_NOCTTY, O_RDWR */
 #include <stdio.h>                     /* perror */
@@ -13,7 +13,7 @@
 
 extern struct global *k;
 
-struct frame *frame_new(char **env, struct font_renderer *r)
+struct term *term_new(char **env, struct font_renderer *r)
 {
         /* Set up the PTY. */
         int master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -67,7 +67,7 @@ struct frame *frame_new(char **env, struct font_renderer *r)
         }
 
         /* The shell is running, now set up the window/graphics. */
-        struct frame *f = calloc(1, sizeof *f);
+        struct term *f = calloc(1, sizeof *f);
 
         if (!f) return NULL;
 
@@ -77,9 +77,9 @@ struct frame *frame_new(char **env, struct font_renderer *r)
         f->k = k;
         f->font = r;
 
-        glGenFramebuffers(1, &f->framebuffer);
+        glGenFramebuffers(1, &f->termbuffer);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, f->termbuffer);
 
         /* Set up the texture */
         glGenTextures(1, &f->tex_color_buffer);
@@ -105,7 +105,7 @@ struct frame *frame_new(char **env, struct font_renderer *r)
         return f;
 }
 
-void frame_title(struct frame *f, const char *title)
+void term_title(struct term *f, const char *title)
 {
         free(f->title);
         f->title = malloc(strlen(title) + 1); /* TODO: xmalloc */

@@ -7,12 +7,12 @@
 #include <string.h>  /* memset */
 #include <unistd.h>
 
-#include "frame.h"   /* frame, frame::(anonymous), cursor, ESC_ALTCHARSET */
+#include "term.h"   /* term, term::(anonymous), cursor, ESC_ALTCHARSET */
 #include "render.h"  /* font_renderer */
 #include "t.h"       /* tclearregion, tmoveto, tscrolldown, tsetscroll */
 #include "util.h"    /* _printf, ESC_ARG_SIZE */
 
-void csiparse(struct frame *f)
+void csiparse(struct term *f)
 {
         f->csi.narg = 0;
         f->csi.buf[f->csi.len] = 0;
@@ -54,12 +54,12 @@ void csiparse(struct frame *f)
 #endif
 }
 
-void resetcsi(struct frame *f)
+void resetcsi(struct term *f)
 {
         memset(&f->csi, 0, sizeof f->csi);
 }
 
-void resetesc(struct frame *f)
+void resetesc(struct term *f)
 {
         f->esc = 0;
 }

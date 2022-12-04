@@ -8,12 +8,11 @@
 #include "util.h"
 #include "font.h"
 
-struct frame;
+struct term;
 
 struct global {
-        struct frame *frame[10];
-        int nframe;
-        struct frame *focus; /* Currently focused frame */
+        struct term *term;
+        struct term *focus; /* Currently focused term */
         struct color color256[256];
         /* TODO: Rename these. */
         struct font_renderer font;
@@ -23,7 +22,7 @@ struct global {
 };
 
 int global_init(struct global *k, char **env, void (*)(char *));
-int global_notify_title_change(struct frame *f);
+int global_notify_title_change(struct term *f);
 int global_render(struct global *k);
 
 #endif

@@ -44,7 +44,7 @@ enum {
         MODE_ALTSCREEN      = 1 << 4,
 };
 
-struct frame {
+struct term {
         struct font_renderer *font;
         int cw, ch;
 
@@ -99,12 +99,11 @@ struct frame {
 
         struct global *k;
 
-        /* TODO: Move this into the global state. */
-        GLuint framebuffer;
+        GLuint termbuffer;
         GLuint tex_color_buffer;
 };
 
-struct frame *frame_new(char **env, struct font_renderer *f);
-void frame_title(struct frame *f, const char *title);
+struct term *term_new(char **env, struct font_renderer *f);
+void term_title(struct term *f, const char *title);
 
 #endif

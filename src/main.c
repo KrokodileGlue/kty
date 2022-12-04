@@ -15,7 +15,7 @@
 #include <GLFW/glfw3.h>
 
 #include "global.h"
-#include "frame.h"
+#include "term.h"
 #include "utf8.h"
 #include "t.h"
 #include "util.h"
@@ -29,7 +29,7 @@ void character_callback(GLFWwindow *window, uint32_t c)
         (void)window;
 
         /* TODO */
-        struct frame *f = k->focus;
+        struct term *f = k->focus;
 
         uint8_t buf[4];
         unsigned len = 0;
@@ -204,7 +204,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 {
         (void)window, (void)mods, (void)scancode;
 
-        struct frame *f = k->focus;
+        struct term *f = k->focus;
 
         if (action == GLFW_RELEASE) return;
 
@@ -259,16 +259,16 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 void window_size_callback(GLFWwindow *window, int width, int height)
 {
         /*
-         * TODO: Obviously to support multiple frames in a single window this
-         * will need to be generalized so that it updates all of the frames.
+         * TODO: Obviously to support multiple terms in a single window this
+         * will need to be generalized so that it updates all of the terms.
          * That's a relatively complex tiling window manager type of operation,
-         * so for now I'll just assume one frame.
+         * so for now I'll just assume one term.
          */
 
         (void)window;
 
         /* TODO */
-        struct frame *f = k->focus;
+        struct term *f = k->focus;
 
         f->font->width = width, f->font->height = height;
         f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
@@ -292,9 +292,9 @@ void *read_shell(void *arg)
 {
         (void)arg;
         /* TODO */
-        struct frame *f = k->frame[0];
+        struct term *f = k->term;
 
-        /* TODO: Put these into the frame. */
+        /* TODO: Put these into the term. */
         static char buf[BUFSIZ];
         static int buflen = 0;
         int ret, written;
@@ -356,7 +356,7 @@ int main(int argc, char **argv, char **env)
 
         k = calloc(1, sizeof *k);
 
-        /* This will create a default frame. */
+        /* This will create a default term. */
         global_init(k, env, window_title_callback);
 
         int width, height;
@@ -368,7 +368,7 @@ int main(int argc, char **argv, char **env)
         global_render(k);
         glfwSwapBuffers(window);
 
-        while (!glfwWindowShouldClose(window) && !k->frame[0]->shell_done) {
+        while (!glfwWindowShouldClose(window) && !k->term->shell_done) {
                 global_render(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();

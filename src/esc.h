@@ -4,11 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-struct frame;
+struct term;
 
-int eschandle(struct frame *f, uint32_t c);
-void resetesc(struct frame *f);
-void resetcsi(struct frame *f);
-void csiparse(struct frame *f);
+int eschandle(struct term *f, uint32_t c);
+void resetesc(struct term *f);
+void resetcsi(struct term *f);
+void csiparse(struct term *f);
 
 #endif

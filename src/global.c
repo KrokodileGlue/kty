@@ -13,7 +13,7 @@
 #include <string.h>             /* memcpy */
 #include <wchar.h>              /* wcwidth */
 #include "font.h"               /* font, cell, CELL_DUMMY, CELL_INVERSE */
-#include "frame.h"              /* frame, window, frame_new, cursor, MOD... */
+#include "term.h"              /* term, window, term_new, cursor, MOD... */
 #include "render.h"             /* font_renderer */
 #include "sprite.h"             /* sprite */
 #include "util.h"               /* color, LINE_SPACING, NUM_CELL, FONT_... */
@@ -286,13 +286,13 @@ int global_init(struct global *k, char **env, void (*window_title_callback)(char
         memcpy(&k->color256, color256, sizeof k->color256);
         render_init(&k->font, &k->m, k->color256);
 
-        struct frame *f = frame_new(env, &k->font);
+        struct term *f = term_new(env, &k->font);
 
         f->focused = 1;
         f->cw = cw;
         f->ch = ch;
 
-        k->frame[k->nframe++] = f;
+        k->term = f;
 
         k->window_title_callback = window_title_callback;
         k->focus = f;
@@ -300,7 +300,7 @@ int global_init(struct global *k, char **env, void (*window_title_callback)(char
         return 0;
 }
 
-int global_notify_title_change(struct frame *f)
+int global_notify_title_change(struct term *f)
 {
         struct global *k = f->k;
         if (f == k->focus)
@@ -312,7 +312,7 @@ int global_render(struct global *f)
 {
         /* TODO */
         struct font_renderer *r = &f->font;
-        render_frame(&f->font, f->frame[0]);
-        render_quad(r, f->frame[0]->tex_color_buffer);
+        render_term(&f->font, f->term);
+        render_quad(r, f->term->tex_color_buffer);
         return 0;
 }
