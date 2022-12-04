@@ -367,7 +367,7 @@ void tmoveto(struct frame *f, int x, int y)
         }
 
         f->c.y = limit(&y, miny, maxy);
-        f->c.x = x;
+        f->c.x = limit(&x, 0, f->col - 1);
         f->font->dirty_display = 1;
 }
 
