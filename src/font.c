@@ -66,7 +66,8 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font
         for (int i = 0; i < r->num_cell; i++) {
                 if (r->cell[i].c == c &&
                         (r->cell[i].mode & (FONT_BOLD | FONT_ITALIC))
-                        == (mode & (FONT_BOLD | FONT_ITALIC)))
+                        == (mode & (FONT_BOLD | FONT_ITALIC))
+                    && r->cell[i].font_size == font_size)
                         return r->cell + i;
         }
 
@@ -153,6 +154,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font
                         .font = font_index,
                         .height = 0,
                         .mode = mode & (FONT_BOLD | FONT_ITALIC),
+                        .font_size = font_size,
                 };
                 font->num_cell++;
 
@@ -210,6 +212,7 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font
                 .font = font_index,
                 .height = ch,
                 .mode = mode & (FONT_BOLD | FONT_ITALIC),
+                .font_size = font_size,
         };
 
         font->spritemap_dirty = 1;

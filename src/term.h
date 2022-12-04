@@ -116,5 +116,6 @@ struct term {
 
 struct term *term_new(char **env, struct font_renderer *f);
 void term_title(struct term *f, const char *title);
+void term_set_font_size(struct term *f, int font_size);
 
 #endif

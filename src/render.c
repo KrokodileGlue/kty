@@ -383,11 +383,11 @@ void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint
                     -1.0 + 2.0 * (float)x0 / (float)r->width,
                     -1.0 + 2.0 * (float)y0 / (float)r->height);
 
-        _printf("%d,%d,%d,%d\n", x0, y0, x1, y1);
-        _printf("scale=%f,%f offset=%f,%f\n", (float)(x1 - x0) / (float)r->width,
-                (float)(y1 - y0) / (float)r->height,
-                -1.0 + 2.0 * (float)x0 / (float)r->width,
-                -1.0 + 2.0 * (float)y0 / (float)r->height);
+        /* _printf("%d,%d,%d,%d\n", x0, y0, x1, y1); */
+        /* _printf("scale=%f,%f offset=%f,%f\n", (float)(x1 - x0) / (float)r->width, */
+        /*         (float)(y1 - y0) / (float)r->height, */
+        /*         -1.0 + 2.0 * (float)x0 / (float)r->width, */
+        /*         -1.0 + 2.0 * (float)y0 / (float)r->height); */
 
         glBindBuffer(GL_ARRAY_BUFFER, r->vbo_quad);
         glEnableVertexAttribArray(r->ui_attribute_coord);

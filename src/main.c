@@ -218,6 +218,29 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 return;
         }
 
+        if (key == GLFW_KEY_EQUAL && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
+                term_set_font_size(k->focus, k->focus->font_size + 1);
+                return;
+        }
+
+        if (key == GLFW_KEY_MINUS && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
+                term_set_font_size(k->focus, k->focus->font_size - 1);
+                return;
+        }
+
+        if (key == GLFW_KEY_RIGHT_BRACKET && mods & GLFW_MOD_CONTROL) {
+                for (int i = 0; i < k->window.nterm; i++) {
+                        if (k->focus == k->window.term[i]) {
+                                if (i == k->window.nterm - 1) {
+                                        i = 0;
+                                } else i++;
+                                k->focus = k->window.term[i];
+                                break;
+                        }
+                }
+                return;
+        }
+
         struct term *f = k->focus;
 
         /*

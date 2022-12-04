@@ -112,17 +112,17 @@ void window_render(struct window *w, struct font_renderer *r)
                 struct term *t = w->term[i];
                 if (w->direction == WINDOW_HORIZONTAL) {
                         render_quad(r,
-                                    w->x0 + i * t->width,
+                                    w->x0 + i * t->width + i,
                                     w->y0,
-                                    w->x0 + (i + 1) * t->width - (i + 1),
+                                    w->x0 + (i + 1) * t->width + i,
                                     w->y1,
                                     t->tex_color_buffer);
                 } else {
                         render_quad(r,
                                     w->x0,
-                                    w->y0 + i * t->height,
+                                    w->y0 + i * t->height + i,
                                     w->x1,
-                                    w->y0 + (i + 1) * t->height - (i + 1),
+                                    w->y0 + (i + 1) * t->height + i,
                                     t->tex_color_buffer);
                 }
         }

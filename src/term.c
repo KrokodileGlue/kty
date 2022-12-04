@@ -10,6 +10,7 @@
 #include <unistd.h>                    /* close, dup2, execle, fork, setsid */
 
 #include "global.h"                    /* global_notify_title_change */
+#include "t.h"
 
 extern struct global *k;
 
@@ -102,20 +103,37 @@ struct term *term_new(char **env, struct font_renderer *r)
                 _printf("Framebuffer status: %u\n", status);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        term_set_font_size(f, 12);
+
+        return f;
+}
+
+void term_set_font_size(struct term *f, int font_size)
+{
+        f->font_size = font_size;
+
         /*
          * Hacky; this assumes that the first font in the list is the
          * user's primary font and that the font is monospace.
          */
-        FT_Face face = r->m->fonts[0].face;
-        FT_Set_Pixel_Sizes(face, 0, 12);
+        FT_Face face = f->font->m->fonts[0].face;
+        FT_Set_Pixel_Sizes(face, 0, font_size);
         FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
         FT_GlyphSlot slot = face->glyph;
         f->cw = slot->metrics.horiAdvance / 64.0;
         f->ch = slot->metrics.vertAdvance / 64.0;
 
-        f->font_size = 12;
+        f->top = 0, f->bot = f->height / (f->ch + LINE_SPACING) - 1;
 
-        return f;
+        tresize(f, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
+
+        struct winsize ws = {
+                .ws_col = f->col,
+                .ws_row = f->row,
+        };
+
+        if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
+                perror("ioctl");
 }
 
 void term_title(struct term *f, const char *title)

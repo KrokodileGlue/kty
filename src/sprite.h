@@ -38,6 +38,7 @@ struct sprite {
         int bitmap_top;
         float tex_coords[4];
         int height;
+        int font_size;
 };
 
 #endif

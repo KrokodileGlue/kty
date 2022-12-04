@@ -61,7 +61,7 @@ void tresize(struct term *f, int col, int row)
                 }
 
         bool wrapped[row];
-        memset(wrapped, 0, sizeof wrapped);
+        memset(wrapped, 0, row * sizeof(bool));
 
         if (col > f->col) {
                 for (int i = 0; i < row; i++) {
