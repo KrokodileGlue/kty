@@ -58,6 +58,8 @@ struct term {
         /* Character width and height */
         int cw, ch;
 
+        int width, height;
+
         /* PTY */
         int master;
 
@@ -108,7 +110,7 @@ struct term {
 
         struct global *k;
 
-        GLuint termbuffer;
+        GLuint framebuffer;
         GLuint tex_color_buffer;
 };
 

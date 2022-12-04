@@ -32,27 +32,27 @@ void window_title_callback(char *title)
         /* glfwSetWindowTitle(window, title); */
 }
 
-void window_split(struct window *w)
+void window_spawn(struct window *w)
 {
-        if (!w->term) {
-                w->term = term_new(w->env, &w->global->font);
-                w->nterm++;
-                pthread_create(&w->term->thread, NULL, read_shell, w->term);
-        }
+        w->term = realloc(w->term, (w->nterm + 1) * sizeof *w->term);
+        w->term[w->nterm] = term_new(w->env, &w->global->font);
+        w->nterm++;
+        window_place(w, w->x0, w->y0, w->x1, w->y1);
+        pthread_create(&w->term[w->nterm - 1]->thread, NULL, read_shell, w->term[w->nterm - 1]);
 }
 
-/* void window_spawn(struct window *w) */
-/* { */
-/*         w->nterm++; */
-/*         w->term = realloc() */
-/* } */
+void window_split(struct window *w)
+{
+        if (!w->term) window_spawn(w);
+}
 
 void window_init(struct window *w, struct global *g, char **env)
 {
         w->global = g;
         w->split = 0.5;
         w->env = env;
-        window_split(w);
+        w->direction = WINDOW_HORIZONTAL;
+        window_spawn(w);
 }
 
 void window_place(struct window *w, int x0, int y0, int x1, int y1)
@@ -75,8 +75,9 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
                 int height = w->direction == WINDOW_VERTICAL ? (y1 - y0) / w->nterm : y1 - y0;
 
                 for (int i = 0; i < w->nterm; i++) {
-                        struct term *f = w->term + i;
+                        struct term *f = w->term[i];
 
+                        f->width = width, f->height = height;
                         f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
 
                         /* Resize the framebuffer. */
@@ -93,6 +94,36 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
 
                         if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
                                 perror("ioctl");
+                }
+        }
+}
+
+void window_render(struct window *w, struct font_renderer *r)
+{
+        for (int i = 0; i < w->nterm; i++)
+                render_term(r, w->term[i]);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0, 1, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glViewport(0, 0, r->width, r->height);
+
+        for (int i = 0; i < w->nterm; i++) {
+                struct term *t = w->term[i];
+                if (w->direction == WINDOW_HORIZONTAL) {
+                        render_quad(r,
+                                    w->x0 + i * t->width,
+                                    w->y0,
+                                    w->x0 + (i + 1) * t->width - (i + 1),
+                                    w->y1,
+                                    t->tex_color_buffer);
+                } else {
+                        render_quad(r,
+                                    w->x0,
+                                    w->y0 + i * t->height,
+                                    w->x1,
+                                    w->y0 + (i + 1) * t->height - (i + 1),
+                                    t->tex_color_buffer);
                 }
         }
 }

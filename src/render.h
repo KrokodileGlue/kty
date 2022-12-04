@@ -23,7 +23,11 @@ struct font_renderer {
         GLint attribute_coord;
         GLint attribute_decoration_color;
         GLint attribute_color;
+
         GLint uniform_ui_tex;
+        GLint uniform_ui_scale;
+        GLint uniform_ui_offset;
+
         GLint uniform_tex;
         GLint uniform_is_solid;
         GLint uniform_is_color;
@@ -63,6 +67,7 @@ struct font_renderer {
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256);
 void render_term(struct font_renderer *r, struct term *f);
 void render_load_fonts(struct font_renderer *r);
-void render_quad(struct font_renderer *r, GLuint tex);
+void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint tex);
+void render_term(struct font_renderer *r, struct term *f);
 
 #endif

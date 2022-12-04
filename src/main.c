@@ -207,6 +207,17 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                 return;
         }
 
+        if (key == GLFW_KEY_ENTER && mods & GLFW_MOD_CONTROL) {
+                window_spawn(&k->window);
+                return;
+        }
+
+        if (key == GLFW_KEY_SPACE && mods & GLFW_MOD_CONTROL) {
+                k->window.direction = !k->window.direction;
+                window_place(&k->window, k->window.x0, k->window.y0, k->window.x1, k->window.y1);
+                return;
+        }
+
         struct term *f = k->focus;
 
         /*

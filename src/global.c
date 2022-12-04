@@ -286,7 +286,7 @@ int global_init(struct global *k, char **env)
         font_manager_init(&k->m);
         render_init(&k->font, &k->m, k->color256);
         window_init(&k->window, k, env);
-        k->focus = k->window.term;
+        k->focus = k->window.term[0];
 
         return 0;
 }
@@ -296,14 +296,12 @@ int global_notify_title_change(struct term *f)
         /* struct global *k = f->k; */
         /* if (f == k->focus) */
         /*         k->window_title_callback(f->title); */
+        (void)f;
         return 0;
 }
 
 int global_render(struct global *f)
 {
-        /* TODO */
-        struct font_renderer *r = &f->font;
-        render_term(&f->font, f->window.term);
-        render_quad(r, f->window.term[0].tex_color_buffer);
+        window_render(&f->window, &f->font);
         return 0;
 }

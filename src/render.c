@@ -43,32 +43,18 @@ void main(void) {\n\
         const char vs2[] = "#version 120\n\
 attribute vec4 coord;\n\
 varying vec2 tcoord;\n\
-varying vec2 scoord;\n\
+uniform vec2 scale;\n\
+uniform vec2 offset;\n\
 void main(void) {\n\
-        gl_Position = vec4(coord.xy, 0, 1);\n\
+        vec2 shift = vec2(scale.x, scale.y);\n\
+        gl_Position = vec4(coord.xy * scale + offset + shift, 0, 1);\n\
         tcoord = coord.zw;\n\
-        scoord = coord.xy;\n\
 }";
 
         const char fs2[] = "#version 120\n\
 varying vec2 tcoord;\n\
-varying vec2 scoord;\n\
 uniform sampler2D tex;\n\
-vec4 f(vec2 uv)\n\
-{\n\
-    float dd = distance(uv, vec2(.5,.5))/8.;\n\
-    vec2 nv = vec2(uv.x + (uv.x*2.-1.)*dd, uv.y + (uv.y*2.-1.)*dd);\n\
-    if (nv.x <= 0. || nv.y <= 0. || nv.x >= 1. || nv.y >= 1.) {\n\
-        return vec4(0);\n\
-    } else {\n\
-        return texture2D(tex, nv);\n\
-    }\n\
-}\n\
 void main(void) {\n\
-    vec2 uvt = (scoord.xy + 1) / 2.0;\n\
-    vec2 uv = uvt;\n\
-//    gl_FragColor = f(uv);\n\
-//    gl_FragColor = sqrt(gl_FragColor);\n\
     gl_FragColor = texture2D(tex, tcoord.xy);\n\
 }";
 
@@ -119,6 +105,9 @@ void main(void) {\n\
         r->attribute_color = bind_attribute_to_program(r->program, "tex_color");
 
         r->uniform_ui_tex = bind_uniform_to_program(r->ui_program, "tex");
+        r->uniform_ui_scale = bind_uniform_to_program(r->ui_program, "scale");
+        r->uniform_ui_offset = bind_uniform_to_program(r->ui_program, "offset");
+
         r->uniform_tex = bind_uniform_to_program(r->program, "tex");
         r->uniform_is_solid = bind_uniform_to_program(r->program, "is_solid");
         r->uniform_is_color = bind_uniform_to_program(r->program, "is_color");
@@ -228,7 +217,8 @@ struct color get_color_from_index(struct font_renderer *r, int i)
  * Renders a `struct cell` into the current termbuffer.
  */
 int render_cell(struct font_renderer *r, struct cell g,
-                int x0, int y0, int cw, int ch, int font_size)
+                int x0, int y0, int cw, int ch, int width, int height,
+                int font_size)
 {
         if (g.mode & CELL_DUMMY) return 0;
 
@@ -242,8 +232,8 @@ int render_cell(struct font_renderer *r, struct cell g,
 
         FT_Glyph_Metrics metrics = sprite->metrics;
 
-        float sx = 2.0 / r->width;
-        float sy = 2.0 / r->height;
+        float sx = 2.0 / width;
+        float sy = 2.0 / height;
 
         /* Calculate the vertex and texture coordinates. */
         float x = -1 + (cw * x0) * sx;
@@ -343,12 +333,12 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch)
+void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch, int width, int height)
 {
         int x = f->c.x, y = f->c.y;
 
-        float sx = 2.0 / (float)r->width;
-        float sy = 2.0 / (float)r->height;
+        float sx = 2.0 / (float)width;
+        float sy = 2.0 / (float)height;
 
         float w = -1 + (cw * x) * sx;
         float n = 1 - (ch * y) * sy - LINE_SPACING * y * sy;
@@ -381,15 +371,23 @@ void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch)
         render_rectangle(r, n, s, w, e, c);
 }
 
-void render_quad(struct font_renderer *r, GLuint tex)
+void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint tex)
 {
-        glViewport(0, 0, r->width, r->height);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-
         glUseProgram(r->ui_program);
+
+        glUniform2f(r->uniform_ui_scale,
+                    (float)(x1 - x0) / (float)r->width,
+                    (float)(y1 - y0) / (float)r->height);
+
+        glUniform2f(r->uniform_ui_offset,
+                    -1.0 + 2.0 * (float)x0 / (float)r->width,
+                    -1.0 + 2.0 * (float)y0 / (float)r->height);
+
+        _printf("%d,%d,%d,%d\n", x0, y0, x1, y1);
+        _printf("scale=%f,%f offset=%f,%f\n", (float)(x1 - x0) / (float)r->width,
+                (float)(y1 - y0) / (float)r->height,
+                -1.0 + 2.0 * (float)x0 / (float)r->width,
+                -1.0 + 2.0 * (float)y0 / (float)r->height);
 
         glBindBuffer(GL_ARRAY_BUFFER, r->vbo_quad);
         glEnableVertexAttribArray(r->ui_attribute_coord);
@@ -409,11 +407,10 @@ void render_quad(struct font_renderer *r, GLuint tex)
 
 void render_term(struct font_renderer *r, struct term *f)
 {
-        glViewport(0, 0, r->width, r->height);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, f->termbuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
+        glViewport(0, 0, f->width, f->height);
         glUseProgram(r->program);
-        /* TODO: Clean up the termbuffer. */
+        /* TODO: Clean up the framebuffer. */
 
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -428,11 +425,11 @@ void render_term(struct font_renderer *r, struct term *f)
                 for (int i = 0; i < f->row; i++)
                         for (int j = 0; j < f->col; j++)
                                 if (f->line[i][j].c)
-                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch, f->font_size);
+                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch, f->width, f->height, f->font_size);
 
                 /* Add the cursor to the decoration VBO. */
                 if (f->mode & MODE_CURSOR_VISIBLE)
-                        render_cursor(r, f, f->cw, f->ch);
+                        render_cursor(r, f, f->cw, f->ch, f->width, f->height);
         }
 
         /* Render the quads. */

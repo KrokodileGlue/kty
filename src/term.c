@@ -77,9 +77,9 @@ struct term *term_new(char **env, struct font_renderer *r)
         f->k = k;
         f->font = r;
 
-        glGenFramebuffers(1, &f->termbuffer);
+        glGenFramebuffers(1, &f->framebuffer);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, f->termbuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
 
         /* Set up the texture */
         glGenTextures(1, &f->tex_color_buffer);
