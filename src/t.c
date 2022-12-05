@@ -12,19 +12,13 @@
 
 #include "esc.h"                       /* resetcsi, resetesc, csihandle */
 #include "font.h"                      /* cell, CELL_BOLD, CELL_DUMMY */
-#include "term.h"                     /* term, cursor, term::(anonymous) */
+#include "term.h"                      /* term, cursor, term::(anonymous) */
 #include "render.h"                    /* font_renderer */
 #include "utf8.h"                      /* utf8decode, utf8encode */
 #include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
 #include "platform.h"
 
-/* TODO: Make this a macro. */
-int limit(int *x, int y, int z)
-{
-        if (*x < y) *x = y;
-        if (*x > z) *x = z;
-        return *x;
-}
+#define LIMIT(x,y,z) ((x) < (y) ? (y) : ((x) > (z) ? (z) : (x)))
 
 /*
  * Swap the saved cursor and the real cursor.
@@ -47,8 +41,8 @@ void tresize(struct term *f, int col, int row)
         /* Save a little effort. */
         if (f->col == col && f->row == row) return;
 
-        limit(&f->c.x, 0, col - 1);
-        limit(&f->c.y, 0, row - 1);
+        f->c.x = LIMIT(f->c.x, 0, col - 1);
+        f->c.y = LIMIT(f->c.y, 0, row - 1);
 
         f->line = realloc(f->line, row * sizeof *f->line);
         f->linewrapped = realloc(f->linewrapped, row * sizeof *f->linewrapped);
@@ -238,8 +232,8 @@ void tresize(struct term *f, int col, int row)
 
         memcpy(f->linewrapped, wrapped, sizeof wrapped);
 
-        limit(&f->c.x, 0, col - 1);
-        limit(&f->c.y, 0, row - 1);
+        f->c.x = LIMIT(f->c.x, 0, col - 1);
+        f->c.y = LIMIT(f->c.y, 0, row - 1);
 
         f->col = col;
         f->row = row;
@@ -316,7 +310,7 @@ void tinsertblank(struct term *f, int n)
         int dst, src, size;
         struct cell *line;
 
-        limit(&n, 0, f->col - f->c.x);
+        n = LIMIT(n, 0, f->col - f->c.x);
 
         dst = f->c.x + n;
         src = f->c.x;
@@ -331,10 +325,10 @@ void tclearregion(struct term *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        limit(&x0, 0, f->col - 1);
-        limit(&y0, 0, f->row - 1);
-        limit(&x1, 0, f->col - 1);
-        limit(&y1, 0, f->row - 1);
+        x0 = LIMIT(x0, 0, f->col - 1);
+        y0 = LIMIT(y0, 0, f->row - 1);
+        x1 = LIMIT(x1, 0, f->col - 1);
+        y1 = LIMIT(y1, 0, f->row - 1);
 
         for (int i = y0; i <= y1; i++) {
                 f->linewrapped[i] = false;
@@ -361,8 +355,9 @@ void tmoveto(struct term *f, int x, int y)
                 maxy = f->bot;
         }
 
-        f->c.y = limit(&y, miny, maxy);
-        f->c.x = limit(&x, 0, f->col - 1);
+        f->c.y = LIMIT(y, miny, maxy);
+        f->c.x = LIMIT(x, 0, f->col - 1);
+
         f->font->dirty_display = 1;
 }
 
@@ -374,8 +369,8 @@ void tmoveato(struct term *f, int x, int y)
 
 void tsetscroll(struct term *f, int top, int bot)
 {
-        limit(&bot, 0, f->row - 1);
-        limit(&top, 0, f->row - 1);
+        bot = LIMIT(bot, 0, f->row - 1);
+        top = LIMIT(top, 0, f->row - 1);
 
         if (top > bot) {
                 int tmp = bot;
@@ -539,7 +534,7 @@ void tdeletechar(struct term *f, int n)
         int dst, src, size;
         struct cell *line;
 
-        limit(&n, 0, f->col - f->c.x);
+        n = LIMIT(n, 0, f->col - f->c.x);
 
         dst = f->c.x;
         src = f->c.x + n;
