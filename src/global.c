@@ -279,14 +279,13 @@ static struct color color256[256] = {
         { 0.960000, 0.960000, 0.960000 }, /* 255 - #f4f4f4 */
 };
 
-int global_init(struct global *k, char **env)
+int global_init(struct global *k)
 {
         memcpy(&k->color256, color256, sizeof k->color256);
 
         font_manager_init(&k->m);
         render_init(&k->font, &k->m, k->color256);
-        window_init(&k->window, k, env);
-        k->focus = k->window.term[0];
+        window_init(&k->window, k);
 
         return 0;
 }

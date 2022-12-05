@@ -1,82 +1,27 @@
-#define _XOPEN_SOURCE 600
-
 #include "term.h"
 
-#include <fcntl.h>                     /* open, O_NOCTTY, O_RDWR */
-#include <stdio.h>                     /* perror */
 #include <stdlib.h>                    /* NULL, calloc, free, grantpt */
 #include <string.h>                    /* strcpy, strlen */
-#include <sys/ioctl.h>                 /* ioctl, TIOCSCTTY */
-#include <unistd.h>                    /* close, dup2, execle, fork, setsid */
 
 #include "global.h"                    /* global_notify_title_change */
 #include "t.h"
+#include "platform.h"
 
 extern struct global *k;
 
-struct term *term_new(char **env, struct font_renderer *r)
+struct term *term_new(struct font_renderer *r, int width, int height)
 {
-        /* Set up the PTY. */
-        int master = posix_openpt(O_RDWR | O_NOCTTY);
-
-        if (master == -1) {
-                perror("posix_openpt");
-                return NULL;
-        }
-
-        if (grantpt(master) == -1) {
-                perror("grantpt");
-                return NULL;
-        }
-
-        if (unlockpt(master) == -1) {
-                perror("unlockpt");
-                return NULL;
-        }
-
-        const char *slave_name = ptsname(master);
-
-        if (!slave_name) {
-                perror("ptsname");
-                return NULL;
-        }
-
-        int slave = open(slave_name, O_RDWR | O_NOCTTY);
-
-        if (slave == -1) {
-                perror("open");
-                return NULL;
-        }
-
-        if (fork()) {
-                close(slave);
-        } else {
-                close(master);
-
-                setsid();
-                if (ioctl(slave, TIOCSCTTY, NULL) == -1) {
-                        perror("ioctl");
-                        return NULL;
-                }
-
-                dup2(slave, 0);
-                dup2(slave, 1);
-                dup2(slave, 2);
-                close(slave);
-
-                execle("/bin/bash", "/bin/bash", NULL, env);
-        }
-
         /* The shell is running, now set up the window/graphics. */
         struct term *f = calloc(1, sizeof *f);
 
         if (!f) return NULL;
 
-        f->master = master;
         f->mode = MODE_CURSOR_VISIBLE;
         f->c.fg = f->c.bg = -1;
         f->k = k;
         f->font = r;
+        f->width = width;
+        f->height = height;
 
         glGenFramebuffers(1, &f->framebuffer);
 
@@ -104,6 +49,8 @@ struct term *term_new(char **env, struct font_renderer *r)
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         term_set_font_size(f, 12);
+        f->subprocess = platform_spawn_shell();
+        platform_inform_subprocess_of_resize(f->subprocess, 1, 1);
 
         return f;
 }
@@ -126,14 +73,6 @@ void term_set_font_size(struct term *f, int font_size)
         f->top = 0, f->bot = f->height / (f->ch + LINE_SPACING) - 1;
 
         tresize(f, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
-
-        struct winsize ws = {
-                .ws_col = f->col,
-                .ws_row = f->row,
-        };
-
-        if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
-                perror("ioctl");
 }
 
 void term_title(struct term *f, const char *title)

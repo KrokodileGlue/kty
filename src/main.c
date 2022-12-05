@@ -19,6 +19,7 @@
 #include "t.h"
 #include "util.h"
 #include "window.h"
+#include "platform.h"
 
 GLFWwindow *window;
 struct global *k;
@@ -29,7 +30,7 @@ void character_callback(GLFWwindow *window, uint32_t c)
         uint8_t buf[4];
         unsigned len = 0;
         utf8encode(c, buf, &len);
-        write(k->focus->master, buf, len);
+        platform_write(k->focus->subprocess, (char *)buf, len);
 }
 
 static struct key {
@@ -203,11 +204,11 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (key == GLFW_KEY_INSERT && mods & GLFW_MOD_SHIFT) {
                 const char *s = glfwGetClipboardString(window);
-                write(k->focus->master, s, strlen(s));
+                platform_write(k->focus->subprocess, s, strlen(s));
                 return;
         }
 
-        if (key == GLFW_KEY_ENTER && mods & GLFW_MOD_CONTROL) {
+        if (key == GLFW_KEY_ENTER && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
                 window_spawn(&k->window);
                 return;
         }
@@ -220,11 +221,13 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (key == GLFW_KEY_EQUAL && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
                 term_set_font_size(k->focus, k->focus->font_size + 1);
+                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->col, k->focus->row);
                 return;
         }
 
         if (key == GLFW_KEY_MINUS && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
                 term_set_font_size(k->focus, k->focus->font_size - 1);
+                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->col, k->focus->row);
                 return;
         }
 
@@ -250,12 +253,12 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
          */
 
         if (key >= 'A' && key <= 'Z' && mods & GLFW_MOD_CONTROL) {
-                write(f->master, (char []){ key - 'A' + 1 }, 1);
+                platform_write(f->subprocess, (char []){ key - 'A' + 1 }, 1);
                 return;
         }
 
         if (key >= 32 && key <= 126 && mods & GLFW_MOD_ALT) {
-                write(f->master, (char []){ 0x1b, tolower(key) }, 2);
+                platform_write(f->subprocess, (char []){ 0x1b, tolower(key) }, 2);
                 return;
         }
 
@@ -282,7 +285,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
 
         if (s) _printf("Key string \e[36m^[%s\e[0m\n", s + 1);
 
-        if (s) write(f->master, s, strlen(s));
+        if (s) platform_write(f->subprocess, s, strlen(s));
 }
 
 void window_size_callback(GLFWwindow *window, int width, int height)
@@ -292,7 +295,7 @@ void window_size_callback(GLFWwindow *window, int width, int height)
         window_place(&k->window, 0, 0, width, height);
 }
 
-int main(int argc, char **argv, char **env)
+int main(int argc, char **argv)
 {
         (void)argc; /* TODO: Parse arguments. */
 
@@ -327,14 +330,17 @@ int main(int argc, char **argv, char **env)
 
         k = calloc(1, sizeof *k);
 
-        /* This will create a default term. */
-        global_init(k, env);
+        global_init(k);
 
         int width, height;
         glfwGetWindowSize(window, &width, &height);
         window_size_callback(window, width, height);
 
+        window_spawn(&k->window);
+        k->focus = k->window.term[0];
+
         global_render(k);
+
         glfwSwapBuffers(window);
 
         while (!glfwWindowShouldClose(window)) {

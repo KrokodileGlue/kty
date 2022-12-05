@@ -22,7 +22,7 @@ struct global {
         /* void (*window_title_callback)(char *); */
 };
 
-int global_init(struct global *k, char **env);
+int global_init(struct global *k);
 int global_notify_title_change(struct term *f);
 int global_render(struct global *k);
 

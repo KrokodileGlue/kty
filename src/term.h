@@ -47,6 +47,8 @@ enum {
 struct term {
         struct font_renderer *font;
 
+        struct subprocess *subprocess;
+
         /* Input buffer */
         char buf[BUFSIZ];
         int buflen;
@@ -60,9 +62,6 @@ struct term {
 
         int width, height;
 
-        /* PTY */
-        int master;
-
         /* State */
         int col, row;
         int top, bot; /* Required for tsetscroll */
@@ -70,8 +69,6 @@ struct term {
         struct cell **line, **linealt;
         bool *linewrapped, *linewrappedalt;
         int altrow, altcol;
-
-        int shell_done; /* bazinga */
 
         /* Escape sequence state machine */
         struct {
@@ -114,7 +111,7 @@ struct term {
         GLuint tex_color_buffer;
 };
 
-struct term *term_new(char **env, struct font_renderer *f);
+struct term *term_new(struct font_renderer *f, int width, int height);
 void term_title(struct term *f, const char *title);
 void term_set_font_size(struct term *f, int font_size);
 

@@ -16,6 +16,7 @@
 #include "render.h"                    /* font_renderer */
 #include "utf8.h"                      /* utf8decode, utf8encode */
 #include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
+#include "platform.h"
 
 /* TODO: Make this a macro. */
 int limit(int *x, int y, int z)
@@ -821,7 +822,7 @@ void tcsihandle(struct term *f)
                 tmoveto(f, f->c.x + DEFAULT(f->csi.arg[0], 1), f->c.y);
                 break;
         case 'c':
-                write(f->master, VT_IDENTITY, strlen(VT_IDENTITY));
+                platform_write(f->subprocess, VT_IDENTITY, strlen(VT_IDENTITY));
                 break;
         case 'D': /* Move cursor left n columns */
                 tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);

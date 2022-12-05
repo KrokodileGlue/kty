@@ -6,13 +6,14 @@
 #include "term.h"
 #include "t.h"
 #include "global.h"
+#include "platform.h"
 
 void *read_shell(void *arg)
 {
         struct term *f = (struct term *)arg;
 
         while (1) {
-                int ret = read(f->master, f->buf + f->buflen, sizeof f->buf / sizeof *f->buf - f->buflen);
+                int ret = platform_read(f->subprocess, f->buf + f->buflen, sizeof f->buf / sizeof *f->buf - f->buflen);
                 if (ret <= 0) break;
                 f->buflen += ret;
                 int written = twrite(f, f->buf, f->buflen);
@@ -20,8 +21,6 @@ void *read_shell(void *arg)
                 if (f->buflen > 0)
                         memmove(f->buf, f->buf + written, f->buflen);
         }
-
-        f->shell_done = true;
 
         return NULL;
 }
@@ -35,7 +34,7 @@ void window_title_callback(char *title)
 void window_spawn(struct window *w)
 {
         w->term = realloc(w->term, (w->nterm + 1) * sizeof *w->term);
-        w->term[w->nterm] = term_new(w->env, &w->global->font);
+        w->term[w->nterm] = term_new(&w->global->font, w->x1 - w->x0, w->y1 - w->y0);
         w->nterm++;
         window_place(w, w->x0, w->y0, w->x1, w->y1);
         pthread_create(&w->term[w->nterm - 1]->thread, NULL, read_shell, w->term[w->nterm - 1]);
@@ -46,13 +45,11 @@ void window_split(struct window *w)
         if (!w->term) window_spawn(w);
 }
 
-void window_init(struct window *w, struct global *g, char **env)
+void window_init(struct window *w, struct global *g)
 {
         w->global = g;
         w->split = 0.5;
-        w->env = env;
         w->direction = WINDOW_HORIZONTAL;
-        window_spawn(w);
 }
 
 void window_place(struct window *w, int x0, int y0, int x1, int y1)
@@ -61,6 +58,8 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
         w->y0 = y0;
         w->x1 = x1;
         w->y1 = y1;
+
+        if (!w->nterm) return;
 
         if (w->left) {
                 if (w->direction == WINDOW_VERTICAL) {
@@ -86,14 +85,7 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
                                      GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
                         tresize(f, width / f->cw, height / (f->ch + LINE_SPACING));
-
-                        struct winsize ws = {
-                                .ws_col = f->col,
-                                .ws_row = f->row,
-                        };
-
-                        if (ioctl(f->master, TIOCSWINSZ, &ws) == -1)
-                                perror("ioctl");
+                        platform_inform_subprocess_of_resize(f->subprocess, f->col, f->row);
                 }
         }
 }
