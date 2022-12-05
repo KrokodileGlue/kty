@@ -39,6 +39,9 @@ void tcursor(struct term *f, bool save)
 
 void tresize(struct term *f, int col, int row)
 {
+        if (col <= 0) col = 1;
+        if (row <= 0) row = 1;
+
         _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
 
         /* Save a little effort. */
@@ -193,7 +196,7 @@ void tresize(struct term *f, int col, int row)
                                 memcpy(block[j], f->line[i + j], f->col * sizeof **block);
                         }
 
-                        while (b.y <= endofblock) {
+                        while (b.y <= endofblock && a.y < row && b.y < row) {
                                 int eol = 0;
 
                                 for (int j = f->col - 1; j >= 0; j--)
@@ -328,8 +331,10 @@ void tclearregion(struct term *f, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        if (x1 >= f->col) x1 = f->col - 1;
-        if (y1 >= f->row) y1 = f->row - 1;
+        limit(&x0, 0, f->col - 1);
+        limit(&y0, 0, f->row - 1);
+        limit(&x1, 0, f->col - 1);
+        limit(&y1, 0, f->row - 1);
 
         for (int i = y0; i <= y1; i++) {
                 f->linewrapped[i] = false;
