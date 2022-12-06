@@ -285,7 +285,7 @@ int global_init(struct global *k)
 
         font_manager_init(&k->m);
         render_init(&k->font, &k->m, k->color256);
-        window_init(&k->window, k);
+        window_init(&k->window);
 
         return 0;
 }

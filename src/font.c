@@ -220,3 +220,17 @@ struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font
 
         return &r->cell[r->num_cell++];
 }
+
+void font_get_dimensions(struct font_manager *m, int *cw, int *ch, int font_size)
+{
+        /*
+         * Hacky; this assumes that the first font in the list is the
+         * user's primary font and that the font is monospace.
+         */
+        FT_Face face = m->fonts[0].face;
+        FT_Set_Pixel_Sizes(face, 0, font_size);
+        FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
+        FT_GlyphSlot slot = face->glyph;
+        *cw = slot->metrics.horiAdvance / 64.0;
+        *ch = slot->metrics.vertAdvance / 64.0;
+}

@@ -220,31 +220,28 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         }
 
         if (key == GLFW_KEY_EQUAL && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
-                term_set_font_size(k->focus, k->focus->font_size + 1);
-                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->col, k->focus->row);
+                int cw, ch;
+                font_get_dimensions(&k->m, &cw, &ch, ++k->focus->font_size);
+                term_set_font_size(k->focus->term, cw, ch);
+                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->term->g->col, k->focus->term->g->row);
                 return;
         }
 
         if (key == GLFW_KEY_MINUS && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
-                term_set_font_size(k->focus, k->focus->font_size - 1);
-                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->col, k->focus->row);
+                int cw, ch;
+                font_get_dimensions(&k->m, &cw, &ch, --k->focus->font_size);
+                term_set_font_size(k->focus->term, cw, ch);
+                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->term->g->col, k->focus->term->g->row);
                 return;
         }
 
         if (key == GLFW_KEY_RIGHT_BRACKET && mods & GLFW_MOD_CONTROL) {
-                for (int i = 0; i < k->window.nterm; i++) {
-                        if (k->focus == k->window.term[i]) {
-                                if (i == k->window.nterm - 1) {
-                                        i = 0;
-                                } else i++;
-                                k->focus = k->window.term[i];
-                                break;
-                        }
-                }
+                k->focus = k->focus->next;
+                if (!k->focus) k->focus = k->window.wterm;
                 return;
         }
 
-        struct term *f = k->focus;
+        struct wterm *f = k->focus;
 
         /*
          * The GLFW keycode things are hardcoded
@@ -273,10 +270,10 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                         break;
                 }
 
-                if (keys[i].appcursor < 0 && !(f->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor < 0 && !(f->term->mode & MODE_APPCURSOR))
                         continue;
 
-                if (keys[i].appcursor > 0 && (f->mode & MODE_APPCURSOR))
+                if (keys[i].appcursor > 0 && (f->term->mode & MODE_APPCURSOR))
                         continue;
 
                 s = keys[i].s;
@@ -337,7 +334,7 @@ int main(int argc, char **argv)
         window_size_callback(window, width, height);
 
         window_spawn(&k->window);
-        k->focus = k->window.term[0];
+        k->focus = k->window.wterm;
 
         global_render(k);
 

@@ -9,7 +9,7 @@
 
 extern struct global *k;
 
-struct term *term_new(struct font_renderer *r, int width, int height)
+struct term *term_new(int width, int height)
 {
         /* The shell is running, now set up the window/graphics. */
         struct term *f = calloc(1, sizeof *f);
@@ -17,12 +17,21 @@ struct term *term_new(struct font_renderer *r, int width, int height)
         if (!f) return NULL;
 
         f->mode = MODE_CURSOR_VISIBLE;
-        f->c.fg = f->c.bg = -1;
-        f->k = k;
-        f->font = r;
+
+        f->grid[0].cursor[0].fg = f->grid[0].cursor[0].bg = -1;
+        f->grid[0].cursor[1].fg = f->grid[0].cursor[1].bg = -1;
+        f->grid[1].cursor[0].fg = f->grid[1].cursor[0].bg = -1;
+        f->grid[1].cursor[1].fg = f->grid[1].cursor[1].bg = -1;
+
+        f->grid[0].c = f->grid[0].cursor;
+        f->grid[1].c = f->grid[1].cursor;
+
+        f->g = f->grid;
+
         f->width = width;
         f->height = height;
 
+        /* TODO: None of this should be here. */
         glGenFramebuffers(1, &f->framebuffer);
 
         glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
@@ -35,7 +44,7 @@ struct term *term_new(struct font_renderer *r, int width, int height)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
         /* TODO: Don't use the window width and height here. */
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, r->width, r->height, 0,
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
                 GL_RGB, GL_UNSIGNED_BYTE, NULL);
 
         glBindTexture(GL_TEXTURE_2D, 0);
@@ -48,31 +57,14 @@ struct term *term_new(struct font_renderer *r, int width, int height)
                 _printf("Framebuffer status: %u\n", status);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        term_set_font_size(f, 12);
-        f->subprocess = platform_spawn_shell();
-        platform_inform_subprocess_of_resize(f->subprocess, 1, 1);
-
         return f;
 }
 
-void term_set_font_size(struct term *f, int font_size)
+void term_set_font_size(struct term *f, int cw, int ch)
 {
-        f->font_size = font_size;
-
-        /*
-         * Hacky; this assumes that the first font in the list is the
-         * user's primary font and that the font is monospace.
-         */
-        FT_Face face = f->font->m->fonts[0].face;
-        FT_Set_Pixel_Sizes(face, 0, font_size);
-        FT_Load_Char(face, 'x', FT_LOAD_COMPUTE_METRICS);
-        FT_GlyphSlot slot = face->glyph;
-        f->cw = slot->metrics.horiAdvance / 64.0;
-        f->ch = slot->metrics.vertAdvance / 64.0;
-
-        f->top = 0, f->bot = f->height / (f->ch + LINE_SPACING) - 1;
-
-        tresize(f, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
+        f->cw = cw, f->ch = ch;
+        f->g->top = 0, f->g->bot = f->height / (f->ch + LINE_SPACING) - 1;
+        tresize(f->g, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
 }
 
 void term_title(struct term *f, const char *title)
@@ -81,4 +73,11 @@ void term_title(struct term *f, const char *title)
         f->title = malloc(strlen(title) + 1); /* TODO: xmalloc */
         strcpy(f->title, title);
         global_notify_title_change(f);
+}
+
+void term_resize(struct term *t, int width, int height)
+{
+        t->width = width, t->height = height;
+        t->g->top = 0, t->g->bot = height / (t->ch + LINE_SPACING) - 1;
+        tresize(t->g, width / t->cw, height / (t->ch + LINE_SPACING));
 }

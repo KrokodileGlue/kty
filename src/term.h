@@ -8,91 +8,11 @@
 
 #include "util.h"
 #include "sprite.h"
-
-struct font_renderer;
-
-enum {
-        BEL = 0x07,
-        BS  = 0x08,
-        HT  = 0x09,
-        LF  = 0x0A,
-        VT  = 0x0B,
-        FF  = 0x0C,
-        CR  = 0x0D,
-        ESC = 0x1B,
-        DEL = 0x7F,
-};
+#include "esc.h"
 
 struct cursor {
         int x, y, mode, state;
         int fg, bg;
-};
-
-enum {
-        ESC_START      = 1,
-        ESC_CSI        = 1 << 1,
-        ESC_STR        = 1 << 2,
-        ESC_STR_END    = 1 << 3,
-        ESC_ALTCHARSET = 1 << 4,
-};
-
-enum {
-        MODE_CURSOR_VISIBLE = 1,
-        MODE_CRLF           = 1 << 1,
-        MODE_APPCURSOR      = 1 << 2,
-        MODE_WRAP           = 1 << 3,
-        MODE_ALTSCREEN      = 1 << 4,
-};
-
-struct term {
-        struct font_renderer *font;
-
-        struct subprocess *subprocess;
-
-        /* Input buffer */
-        char buf[BUFSIZ];
-        int buflen;
-
-        int font_size;
-
-        pthread_t thread;
-
-        /* Character width and height */
-        int cw, ch;
-
-        int width, height;
-
-        /* State */
-        int col, row;
-        int top, bot; /* Required for tsetscroll */
-        struct cursor c, altcursor;
-        struct cell **line, **linealt;
-        bool *linewrapped, *linewrappedalt;
-        int altrow, altcol;
-
-        /* Escape sequence state machine */
-        struct {
-                char buf[1024];
-                long arg[ESC_ARG_SIZE];
-                unsigned len;
-                int narg;
-                int priv;
-                int mode[2];
-        } csi;
-
-        struct {
-                char buf[2048];
-                unsigned len;
-                unsigned char type;
-                char *arg[ESC_ARG_SIZE];
-                int narg;
-        } esc_str;
-
-        int mode;
-        int esc;
-
-        char *title;
-        int icharset;
 
         enum {
                 CURSOR_STYLE_BLINKING_BLOCK,
@@ -103,16 +23,68 @@ struct term {
                 CURSOR_STYLE_BLINKING_BAR,
                 CURSOR_STYLE_STEADY_BAR,
                 CURSOR_STYLE_MAX = CURSOR_STYLE_STEADY_BAR,
-        } cursor_style;
+        } style;
+};
 
-        struct global *k;
+enum {
+        ESC_START      = 1 << 0,
+        ESC_CSI        = 1 << 1,
+        ESC_STR        = 1 << 2,
+        ESC_STR_END    = 1 << 3,
+        ESC_ALTCHARSET = 1 << 4,
+};
 
+enum {
+        MODE_CURSOR_VISIBLE = 1 << 0,
+        MODE_CRLF           = 1 << 1,
+        MODE_APPCURSOR      = 1 << 2,
+        MODE_WRAP           = 1 << 3, /* Whether to wrap lines or truncate */
+        MODE_ALTSCREEN      = 1 << 4,
+};
+
+struct term {
+        int cw, ch;             /* Character width/height */
+        int width, height;      /* Dimensions in pixels */
+
+        /* State */
+
+        struct grid {
+                uint32_t **line;
+                struct cell_attr { int mode, fg, bg; } **attr;
+                bool *wrap;
+
+                struct cursor cursor[2];
+                struct cursor *c;
+
+                int row, col;
+                int top, bot;
+
+                int esc;        /* Escape state */
+                int charset;
+
+                struct csi csi;
+                struct stresc stresc;
+        } grid[2];
+
+        /*
+         * There are two grids: the primary grid and the alternate
+         * grid. All operations happen on the primary grid, which this
+         * points to.
+         */
+        struct grid *g;
+
+        int mode;
+
+        char *title;
+
+        /* TODO: Move these out into window.h */
         GLuint framebuffer;
         GLuint tex_color_buffer;
 };
 
-struct term *term_new(struct font_renderer *f, int width, int height);
+struct term *term_new(int width, int height);
 void term_title(struct term *f, const char *title);
-void term_set_font_size(struct term *f, int font_size);
+void term_set_font_size(struct term *f, int cw, int ch);
+void term_resize(struct term *t, int width, int height);
 
 #endif

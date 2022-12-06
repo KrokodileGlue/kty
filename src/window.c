@@ -1,25 +1,24 @@
-#include <pthread.h> /* TODO: Windows support. */
-#include <sys/ioctl.h>
-#include <unistd.h>
-
 #include "window.h"
 #include "term.h"
 #include "t.h"
 #include "global.h"
 #include "platform.h"
 
+extern struct global *k;
+
+/* TODO: Move this into platform. */
 void *read_shell(void *arg)
 {
-        struct term *f = (struct term *)arg;
+        struct wterm *wt = (struct wterm *)arg;
 
         while (1) {
-                int ret = platform_read(f->subprocess, f->buf + f->buflen, sizeof f->buf / sizeof *f->buf - f->buflen);
+                int ret = platform_read(wt->subprocess, wt->buf + wt->buflen, sizeof wt->buf / sizeof *wt->buf - wt->buflen);
                 if (ret <= 0) break;
-                f->buflen += ret;
-                int written = twrite(f, f->buf, f->buflen);
-                f->buflen -= written;
-                if (f->buflen > 0)
-                        memmove(f->buf, f->buf + written, f->buflen);
+                wt->buflen += ret;
+                int written = twrite(wt->term, wt->buf, wt->buflen);
+                wt->buflen -= written;
+                if (wt->buflen > 0)
+                        memmove(wt->buf, wt->buf + written, wt->buflen);
         }
 
         return NULL;
@@ -31,35 +30,56 @@ void window_title_callback(char *title)
         /* glfwSetWindowTitle(window, title); */
 }
 
+/*
+ * Add a new wterm to the end of the linked list.
+ */
+static void append_wterm(struct window *w, struct wterm *wterm)
+{
+        struct wterm **head = &w->wterm;
+        while (*head) head = &(*head)->next;
+        *head = wterm;
+        w->nterm++;
+}
+
 void window_spawn(struct window *w)
 {
-        w->term = realloc(w->term, (w->nterm + 1) * sizeof *w->term);
-        w->term[w->nterm] = term_new(&w->global->font, w->x1 - w->x0, w->y1 - w->y0);
-        w->nterm++;
+        struct wterm *wt = calloc(1, sizeof *wt); /* TODO: xmalloc */
+        *wt = (struct wterm){
+                .term = term_new(w->x1 - w->x0, w->y1 - w->y0),
+                .font_size = 12, /* TODO: Configure default font size */
+        };
+        append_wterm(w, wt);
+
+        int cw, ch;
+        font_get_dimensions(&k->m, &cw, &ch, 12);
+        term_set_font_size(wt->term, cw, ch);
+        wt->subprocess = platform_spawn_shell();
         window_place(w, w->x0, w->y0, w->x1, w->y1);
-        pthread_create(&w->term[w->nterm - 1]->thread, NULL, read_shell, w->term[w->nterm - 1]);
+        pthread_create(&wt->thread, NULL, read_shell, wt);
 }
 
 void window_split(struct window *w)
 {
-        if (!w->term) window_spawn(w);
+        if (!w->wterm) window_spawn(w);
 }
 
-void window_init(struct window *w, struct global *g)
+void window_init(struct window *w)
 {
-        w->global = g;
+        if (!w) return;
         w->split = 0.5;
         w->direction = WINDOW_HORIZONTAL;
 }
 
 void window_place(struct window *w, int x0, int y0, int x1, int y1)
 {
+        if (!w) return;
+
         w->x0 = x0;
         w->y0 = y0;
         w->x1 = x1;
         w->y1 = y1;
 
-        if (!w->nterm) return;
+        if (!w->wterm) return;
 
         if (w->left) {
                 if (w->direction == WINDOW_VERTICAL) {
@@ -73,35 +93,32 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
                 int width = w->direction == WINDOW_VERTICAL ? x1 - x0 : (x1 - x0) / w->nterm;
                 int height = w->direction == WINDOW_VERTICAL ? (y1 - y0) / w->nterm : y1 - y0;
 
-                for (int i = 0; i < w->nterm; i++) {
-                        struct term *f = w->term[i];
-
-                        f->width = width, f->height = height;
-                        f->top = 0, f->bot = height / (f->ch + LINE_SPACING) - 1;
-
-                        /* Resize the framebuffer. */
-                        glBindTexture(GL_TEXTURE_2D, f->tex_color_buffer);
+                for (struct wterm *wt = w->wterm; wt; wt = wt->next) {
+                        struct term *t = wt->term;
+                        /* TODO: Move this somewhere sensible. */
+                        glBindTexture(GL_TEXTURE_2D, t->tex_color_buffer);
                         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
                                      GL_RGB, GL_UNSIGNED_BYTE, NULL);
-
-                        tresize(f, width / f->cw, height / (f->ch + LINE_SPACING));
-                        platform_inform_subprocess_of_resize(f->subprocess, f->col, f->row);
+                        term_resize(t, width, height);
+                        platform_inform_subprocess_of_resize(wt->subprocess, t->g->col, t->g->row);
                 }
         }
 }
 
 void window_render(struct window *w, struct font_renderer *r)
 {
-        for (int i = 0; i < w->nterm; i++)
-                render_term(r, w->term[i]);
+        for (struct wterm *wt = w->wterm; wt; wt = wt->next)
+                render_term(r, wt->term, wt->font_size);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0, 1, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         glViewport(0, 0, r->width, r->height);
 
-        for (int i = 0; i < w->nterm; i++) {
-                struct term *t = w->term[i];
+        int i = 0;
+        for (struct wterm *wt = w->wterm; wt; wt = wt->next, i++) {
+                struct term *t = wt->term;
+
                 if (w->direction == WINDOW_HORIZONTAL) {
                         render_quad(r,
                                     w->x0 + i * t->width + i,

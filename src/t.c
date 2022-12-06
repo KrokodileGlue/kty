@@ -18,69 +18,82 @@
 #include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
 #include "platform.h"
 
+enum {
+        BEL = 0x07,
+        BS  = 0x08,
+        HT  = 0x09,
+        LF  = 0x0A,
+        VT  = 0x0B,
+        FF  = 0x0C,
+        CR  = 0x0D,
+        ESC = 0x1B,
+        DEL = 0x7F,
+};
+
 #define LIMIT(x,y,z) ((x) < (y) ? (y) : ((x) > (z) ? (z) : (x)))
 
 /*
- * Swap the saved cursor and the real cursor.
+ * Save or load the cursor.
  */
-void tcursor(struct term *f, bool save)
+void tcursor(struct grid *g, int save)
 {
-        if (save)
-                f->altcursor = f->c;
-        else
-                f->c = f->altcursor;
+        g->c = g->cursor + !!save;
 }
 
-void tresize(struct term *f, int col, int row)
+/*
+ * Grow the buffers representing the grid to accomodate the new
+ * dimensions `col` x `row`. It doesn't update the cursor position or
+ * anything else.
+ */
+static void tgrow(struct grid *g, int col, int row)
 {
-        if (col <= 0) col = 1;
-        if (row <= 0) row = 1;
+        g->line = realloc(g->line, row * sizeof *g->line);
+        g->attr = realloc(g->attr, row * sizeof *g->attr);
+        g->wrap = realloc(g->wrap, row * sizeof *g->wrap);
 
-        _printf("%d,%d -> %d,%d\n", f->col, f->row, col, row);
-
-        /* Save a little effort. */
-        if (f->col == col && f->row == row) return;
-
-        f->c.x = LIMIT(f->c.x, 0, col - 1);
-        f->c.y = LIMIT(f->c.y, 0, row - 1);
-
-        f->line = realloc(f->line, row * sizeof *f->line);
-        f->linewrapped = realloc(f->linewrapped, row * sizeof *f->linewrapped);
-
-        for (int i = f->row; i < row; i++) {
-                f->line[i] = calloc(f->col, sizeof *f->line[i]);
-                f->linewrapped[i] = 0;
+        for (int i = g->row; i < row; i++) {
+                g->line[i] = calloc(g->col, sizeof *g->line[i]);
+                g->attr[i] = calloc(g->col, sizeof *g->attr[i]);
+                g->wrap[i] = 0;
         }
 
-        if (col > f->col)
+        if (col > g->col)
                 for (int i = 0; i < row; i++) {
-                        f->line[i] = realloc(f->line[i], col * sizeof *f->line[i]);
-                        memset(f->line[i] + f->col, 0, (col - f->col) * sizeof **f->line);
-                }
+                        g->line[i] = realloc(g->line[i], col * sizeof *g->line[i]);
+                        memset(g->line[i] + g->col, 0, (col - g->col) * sizeof **g->line);
 
+                        g->attr[i] = realloc(g->attr[i], col * sizeof *g->attr[i]);
+                        memset(g->attr[i] + g->col, 0, (col - g->col) * sizeof **g->attr);
+                }
+}
+
+static void twrap(struct grid *g, int col, int row)
+{
         bool wrapped[row];
         memset(wrapped, 0, row * sizeof(bool));
 
-        if (col > f->col) {
+        if (col > g->col) {
                 for (int i = 0; i < row; i++) {
                         struct { int x, y; } a = { 0, i }, b = a;
 
                         int endofblock = i;
 
-                        while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
+                        while (g->wrap[endofblock] && endofblock < row) endofblock++;
 
                         int lastlineupdated = a.y;
 
-                        while ((b.y && f->linewrapped[b.y - 1]) || (b.y == i && f->linewrapped[i])) {
+                        while ((b.y && g->wrap[b.y - 1]) || (b.y == i && g->wrap[i])) {
                                 if (b.y >= row || a.y >= row) break;
 
-                                f->line[a.y][a.x] = f->line[b.y][b.x];
+                                g->line[a.y][a.x] = g->line[b.y][b.x];
 
-                                if (f->line[b.y][b.x].c)
+                                if (g->line[b.y][b.x])
                                         lastlineupdated = a.y;
 
-                                if (a.x != b.x || a.y != b.y)
-                                        f->line[b.y][b.x] = (struct cell){ 0 };
+                                if (a.x != b.x || a.y != b.y) {
+                                        g->line[b.y][b.x] = 0;
+                                        g->attr[b.y][b.x] = (struct cell_attr){ 0 };
+                                }
 
                                 a.x++;
                                 b.x++;
@@ -91,12 +104,12 @@ void tresize(struct term *f, int col, int row)
                                         a.y++;
                                 }
 
-                                if (b.x == f->col) {
+                                if (b.x == g->col) {
                                         b.x = 0;
                                         b.y++;
                                 }
 
-                                if (!((b.y && f->linewrapped[b.y - 1]) || (b.y == i && f->linewrapped[i]))) {
+                                if (!((b.y && g->wrap[b.y - 1]) || (b.y == i && g->wrap[i]))) {
                                         b.y++;
                                         break;
                                 }
@@ -109,28 +122,28 @@ void tresize(struct term *f, int col, int row)
                                 wrapped[j] = false;
 
                         for (int j = 0; j <= a.y; j++) {
-                                f->linewrapped[j] = false;
+                                g->wrap[j] = false;
                         }
 
                         for (int j = 0; j < endofblock - lastlineupdated; j++) {
-                                tscrollup(f, lastlineupdated + 1, 1);
-                                if (f->c.y > lastlineupdated + 1) f->c.y--;
+                                tscrollup(g, lastlineupdated + 1, 1);
+                                if (g->c->y > lastlineupdated + 1) g->c->y--;
                         }
 
                         i = lastlineupdated;
                 }
-        } else if (col < f->col) {
+        } else if (col < g->col) {
                 /*
                  * If we're shrinking horizontally then lines which
                  * are currently considered wrapped should remain so.
                  */
-                /* memcpy(wrapped, f->linewrapped, sizeof wrapped); */
+                /* memcpy(wrapped, g->wrap, sizeof wrapped); */
 
                 for (int i = 0; i < row; i++) {
                         int eol = 0;
 
-                        for (int j = f->col - 1; j >= col; j--)
-                                if (f->line[i][j].c) {
+                        for (int j = g->col - 1; j >= col; j--)
+                                if (g->line[i][j]) {
                                         eol = j;
                                         break;
                                 }
@@ -139,26 +152,32 @@ void tresize(struct term *f, int col, int row)
 
                         struct { int x, y; } a = { 0, i }, b = a;
 
-                        struct cell line[f->col];
-                        memcpy(line, f->line[i], sizeof line);
+                        uint32_t line[g->col];
+                        struct cell_attr attr[g->col];
+                        memcpy(line, g->line[i], sizeof line);
+                        memcpy(attr, g->attr[i], sizeof attr);
 
-                        if (!f->linewrapped[a.y] && eol >= col) {
+                        if (!g->wrap[a.y] && eol >= col) {
                                 for (int j = 0; j <= eol; j++) {
-                                        f->line[a.y][a.x] = line[b.x];
+                                        g->line[a.y][a.x] = line[b.x];
+                                        g->attr[a.y][a.x] = attr[b.x];
 
-                                        if (b.y >= 0 && (a.x != b.x || a.y != b.y))
-                                                f->line[b.y][b.x] = (struct cell){ 0 };
+                                        if (b.y >= 0 && (a.x != b.x || a.y != b.y)) {
+                                                g->line[b.y][b.x] = 0;
+                                                g->attr[b.y][b.x] = (struct cell_attr){ 0 };
+                                        }
 
                                         a.x++;
                                         b.x++;
 
                                         if (a.x == col) {
-                                                tscrolldown(f, a.y + 1, 1);
-                                                if (f->c.y >= a.y) f->c.y++;
+                                                tscrolldown(g, a.y + 1, 1);
+                                                if (g->c->y >= a.y) g->c->y++;
                                                 a.x = 0;
                                                 a.y++;
                                                 if (a.y >= row) break;
-                                                memset(f->line[a.y], 0, col * sizeof *f->line);
+                                                memset(g->line[a.y], 0, col * sizeof *g->line);
+                                                memset(g->attr[a.y], 0, col * sizeof *g->attr);
                                         }
                                 }
 
@@ -169,7 +188,7 @@ void tresize(struct term *f, int col, int row)
                                 continue;
                         }
 
-                        if (!f->linewrapped[i]) continue;
+                        if (!g->wrap[i]) continue;
 
                         /*
                          * If we reach this point then we're looking
@@ -179,29 +198,34 @@ void tresize(struct term *f, int col, int row)
 
                         int endofblock = i;
 
-                        while (f->linewrapped[endofblock] && endofblock < row) endofblock++;
+                        while (g->wrap[endofblock] && endofblock < row) endofblock++;
 
                         int numlines = endofblock - i + 1;
 
-                        struct cell **block = malloc(numlines * sizeof *block);
+                        uint32_t **block = malloc(numlines * sizeof *block);
+                        struct cell_attr **attrblock = malloc(numlines * sizeof *attrblock);
 
                         for (int j = 0; j < numlines; j++) {
-                                block[j] = malloc(f->col * sizeof **block);
-                                memcpy(block[j], f->line[i + j], f->col * sizeof **block);
+                                block[j] = malloc(g->col * sizeof **block);
+                                memcpy(block[j], g->line[i + j], g->col * sizeof **block);
+
+                                attrblock[j] = malloc(g->col * sizeof **attrblock);
+                                memcpy(attrblock[j], g->line[i + j], g->col * sizeof **attrblock);
                         }
 
                         while (b.y <= endofblock && a.y < row && b.y < row) {
                                 int eol = 0;
 
-                                for (int j = f->col - 1; j >= 0; j--)
-                                        if (block[b.y - i][j].c) {
+                                for (int j = g->col - 1; j >= 0; j--)
+                                        if (block[b.y - i][j]) {
                                                 eol = j;
                                                 break;
                                         }
 
                                 if (b.y == endofblock && b.x > eol) break;
 
-                                f->line[a.y][a.x] = block[b.y - i][b.x];
+                                g->line[a.y][a.x] = block[b.y - i][b.x];
+                                g->attr[a.y][a.x] = attrblock[b.y - i][b.x];
 
                                 a.x++;
                                 b.x++;
@@ -211,13 +235,13 @@ void tresize(struct term *f, int col, int row)
                                         a.y++;
 
                                         if (a.y >= endofblock + 1) {
-                                                tscrolldown(f, a.y, 1);
-                                                memset(f->line[a.y], 0, col * sizeof *f->line);
-                                                if (f->c.y >= a.y) f->c.y++;
+                                                tscrolldown(g, a.y, 1);
+                                                memset(g->line[a.y], 0, col * sizeof *g->line);
+                                                if (g->c->y >= a.y) g->c->y++;
                                         }
                                 }
 
-                                if (b.x == f->col) {
+                                if (b.x == g->col) {
                                         b.x = 0;
                                         b.y++;
                                 }
@@ -230,147 +254,166 @@ void tresize(struct term *f, int col, int row)
                 }
         }
 
-        memcpy(f->linewrapped, wrapped, sizeof wrapped);
-
-        f->c.x = LIMIT(f->c.x, 0, col - 1);
-        f->c.y = LIMIT(f->c.y, 0, row - 1);
-
-        f->col = col;
-        f->row = row;
-
-        f->font->dirty_display = 1;
+        memcpy(g->wrap, wrapped, sizeof wrapped);
 }
 
-void tprintc(struct term *f, uint32_t c)
+void tresize(struct grid *g, int col, int row)
+{
+        if (col <= 0) col = 1;
+        if (row <= 0) row = 1;
+
+        _printf("%d,%d -> %d,%d\n", g->col, g->row, col, row);
+
+        /* Save a little effort. */
+        if (g->col == col && g->row == row) return;
+
+        tgrow(g, col, row);
+
+        g->c->x = LIMIT(g->c->x, 0, col - 1);
+        g->c->y = LIMIT(g->c->y, 0, row - 1);
+        twrap(g, col, row);
+        g->c->x = LIMIT(g->c->x, 0, col - 1);
+        g->c->y = LIMIT(g->c->y, 0, row - 1);
+
+        g->col = col;
+        g->row = row;
+}
+
+void tprintc(struct grid *t, uint32_t c)
 {
         _printf("U+%"PRIX32"\n", c);
-        int mode = f->c.mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
+        int mode = t->c->mode | (wcwidth(c) == 2 ? CELL_WIDE : 0);
 
-        if (f->c.x >= f->col) {
-                f->linewrapped[f->c.y] = true;
-                _printf("wrapping %d\n", f->c.y);
+        if (t->c->x >= t->col) {
+                t->wrap[t->c->y] = true;
+                _printf("wrapping %d\n", t->c->y);
                 mode |= CELL_WRAP;
-                f->c.x = 0;
-                f->c.y++;
+                t->c->x = 0;
+                t->c->y++;
         }
 
         /*
          * TODO: This might be more appropriate in `tputc`.
          */
-        if (f->c.y >= f->row) {
-                int diff = f->c.y - f->row;
-                f->c.y -= diff;
-                if (f->c.y == f->row) {
-                        f->c.y--;
+        if (t->c->y >= t->row) {
+                int diff = t->c->y - t->row;
+                t->c->y -= diff;
+                if (t->c->y == t->row) {
+                        t->c->y--;
                         diff--;
                 }
-                tscrollup(f, 0, abs(diff));
+                tscrollup(t, 0, abs(diff));
         }
 
-        f->line[f->c.y][f->c.x++] = (struct cell){
-                .c = c,
+        t->line[t->c->y][t->c->x] = c;
+        t->attr[t->c->y][t->c->x] = (struct cell_attr){
                 .mode = mode,
-                .fg = f->c.fg,
-                .bg = f->c.bg,
+                .fg = t->c->fg,
+                .bg = t->c->bg,
         };
+
+        t->c->x++;
 
         if (wcwidth(c) > 1) {
                 int wrapped = 0;
 
-                if (f->c.x >= f->col) {
-                        f->linewrapped[f->c.y] = true;
+                if (t->c->x >= t->col) {
+                        t->wrap[t->c->y] = true;
                         wrapped = CELL_WRAP;
-                        f->c.x = 0;
-                        f->c.y++;
+                        t->c->x = 0;
+                        t->c->y++;
                 }
 
-                if (f->c.y >= f->row) {
-                        int diff = f->c.y - f->row;
-                        f->c.y -= diff;
-                        if (f->c.y == f->row) {
-                                f->c.y--;
+                if (t->c->y >= t->row) {
+                        int diff = t->c->y - t->row;
+                        t->c->y -= diff;
+                        if (t->c->y == t->row) {
+                                t->c->y--;
                                 diff--;
                         }
-                        tscrollup(f, 0, abs(diff));
+                        tscrollup(t, 0, abs(diff));
                 }
 
-                f->line[f->c.y][f->c.x++] = (struct cell){
+                t->line[t->c->y][t->c->x] = 0;
+                t->attr[t->c->y][t->c->x] = (struct cell_attr){
                         .mode = CELL_DUMMY | wrapped,
                 };
+
+                t->c->x++;
         }
 
-        if (f->c.x % f->col == 0)
-                f->c.mode |= CELL_WRAPNEXT;
-
-        f->font->dirty_display = 1;
+        if (t->c->x % t->col == 0)
+                t->c->mode |= CELL_WRAPNEXT;
 }
 
-void tinsertblank(struct term *f, int n)
+void tinsertblank(struct grid *t, int n)
 {
         int dst, src, size;
-        struct cell *line;
 
-        n = LIMIT(n, 0, f->col - f->c.x);
+        uint32_t *line;
+        struct cell_attr *attr;
 
-        dst = f->c.x + n;
-        src = f->c.x;
-        size = f->col - dst;
-        line = f->line[f->c.y];
+        n = LIMIT(n, 0, t->col - t->c->x);
 
-        memmove(&line[dst], &line[src], size * sizeof(struct cell));
-        tclearregion(f, src, f->c.y, dst - 1, f->c.y);
+        dst = t->c->x + n;
+        src = t->c->x;
+        size = t->col - dst;
+        line = t->line[t->c->y];
+        attr = t->attr[t->c->y];
+
+        memmove(line + dst, line + src, size * sizeof *line);
+        memmove(attr + dst, attr + src, size * sizeof *attr);
+
+        tclearregion(t, src, t->c->y, dst - 1, t->c->y);
 }
 
-void tclearregion(struct term *f, int x0, int y0, int x1, int y1)
+void tclearregion(struct grid *t, int x0, int y0, int x1, int y1)
 {
         _printf("Clearing region %d,%d,%d,%d\n", x0, y0, x1, y1);
 
-        x0 = LIMIT(x0, 0, f->col - 1);
-        y0 = LIMIT(y0, 0, f->row - 1);
-        x1 = LIMIT(x1, 0, f->col - 1);
-        y1 = LIMIT(y1, 0, f->row - 1);
+        x0 = LIMIT(x0, 0, t->col - 1);
+        y0 = LIMIT(y0, 0, t->row - 1);
+        x1 = LIMIT(x1, 0, t->col - 1);
+        y1 = LIMIT(y1, 0, t->row - 1);
 
         for (int i = y0; i <= y1; i++) {
-                f->linewrapped[i] = false;
-                for (int j = x0; j <= x1; j++)
-                        f->line[i][j] = (struct cell){
-                                .c = 0,
+                t->wrap[i] = false;
+                for (int j = x0; j <= x1; j++) {
+                        t->line[i][j] = 0;
+                        t->attr[i][j] = (struct cell_attr){
                                 .mode = 0,
                                 .fg = -1,
                                 .bg = -1,
                         };
+                }
         }
-
-        f->font->dirty_display = 1;
 }
 
-void tmoveto(struct term *f, int x, int y)
+void tmoveto(struct grid *t, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
 
-        int miny = 0, maxy = f->row - 1;
+        int miny = 0, maxy = t->row - 1;
 
-        if (f->c.state & CELL_ORIGIN) {
-                miny = f->top;
-                maxy = f->bot;
+        if (t->c->state & CELL_ORIGIN) {
+                miny = t->top;
+                maxy = t->bot;
         }
 
-        f->c.y = LIMIT(y, miny, maxy);
-        f->c.x = LIMIT(x, 0, f->col - 1);
-
-        f->font->dirty_display = 1;
+        t->c->y = LIMIT(y, miny, maxy);
+        t->c->x = LIMIT(x, 0, t->col - 1);
 }
 
-void tmoveato(struct term *f, int x, int y)
+void tmoveato(struct grid *t, int x, int y)
 {
         _printf("Moving cursor to %d,%d\n", x, y);
-        tmoveto(f, x, y + ((f->c.state & CELL_ORIGIN) ? f->top : 0));
+        tmoveto(t, x, y + ((t->c->state & CELL_ORIGIN) ? t->top : 0));
 }
 
-void tsetscroll(struct term *f, int top, int bot)
+void tsetscroll(struct grid *t, int top, int bot)
 {
-        bot = LIMIT(bot, 0, f->row - 1);
-        top = LIMIT(top, 0, f->row - 1);
+        bot = LIMIT(bot, 0, t->row - 1);
+        top = LIMIT(top, 0, t->row - 1);
 
         if (top > bot) {
                 int tmp = bot;
@@ -378,74 +421,78 @@ void tsetscroll(struct term *f, int top, int bot)
                 top = tmp;
         }
 
-        f->top = top;
-        f->bot = bot;
+        t->top = top;
+        t->bot = bot;
 }
 
-void tscrolldown(struct term *f, int orig, int n)
+void tscrolldown(struct grid *t, int orig, int n)
 {
         _printf("Scrolling %d lines around %d\n", n, orig);
 
-        tclearregion(f, 0, f->bot - n + 1, f->col - 1, f->bot);
+        tclearregion(t, 0, t->bot - n + 1, t->col - 1, t->bot);
 
-        for (int i = f->bot; i >= orig + n; i--) {
-                struct cell *tmp = f->line[i];
-                f->line[i] = f->line[i - n];
-                f->line[i - n] = tmp;
+        for (int i = t->bot; i >= orig + n; i--) {
+                uint32_t *tmp = t->line[i];
+                t->line[i] = t->line[i - n];
+                t->line[i - n] = tmp;
 
-                bool temp = f->linewrapped[i];
-                f->linewrapped[i] = f->linewrapped[i - n];
-                f->linewrapped[i - n] = temp;
+                struct cell_attr *tmp2 = t->attr[i];
+                t->attr[i] = t->attr[i - n];
+                t->attr[i - n] = tmp2;
+
+                bool temp = t->wrap[i];
+                t->wrap[i] = t->wrap[i - n];
+                t->wrap[i - n] = temp;
         }
-
-        f->font->dirty_display = 1;
 }
 
-void tscrollup(struct term *f, int orig, int n)
+void tscrollup(struct grid *t, int orig, int n)
 {
         _printf("Scrolling %d lines around %d\n", n, orig);
 
-        tclearregion(f, 0, orig, f->col - 1, orig + n - 1);
+        tclearregion(t, 0, orig, t->col - 1, orig + n - 1);
 
-        for (int i = orig; i <= f->bot - n; i++) {
-                struct cell *tmp = f->line[i];
-                f->line[i] = f->line[i + n];
-                f->line[i + n] = tmp;
+        for (int i = orig; i <= t->bot - n; i++) {
+                uint32_t *tmp = t->line[i];
+                t->line[i] = t->line[i + n];
+                t->line[i + n] = tmp;
 
-                bool temp = f->linewrapped[i];
-                f->linewrapped[i] = f->linewrapped[i + n];
-                f->linewrapped[i + n] = temp;
+                struct cell_attr *tmp2 = t->attr[i];
+                t->attr[i] = t->attr[i + n];
+                t->attr[i + n] = tmp2;
+
+                bool temp = t->wrap[i];
+                t->wrap[i] = t->wrap[i + n];
+                t->wrap[i + n] = temp;
         }
-
-        f->font->dirty_display = 1;
 }
 
-void tnewline(struct term *f, int first_col)
+void tnewline(struct grid *t, int first_col)
 {
         _printf("tnewline\n");
 
-        int y = f->c.y;
+        int y = t->c->y;
 
-        if (y == f->bot) {
-                tscrollup(f, f->top, 1);
+        if (y == t->bot) {
+                tscrollup(t, t->top, 1);
         } else {
                 y++;
         }
 
-        tmoveto(f, first_col ? 0 : f->c.x, y);
+        tmoveto(t, first_col ? 0 : t->c->x, y);
 }
 
-void tstrparse(struct term *f)
+void tstrparse(struct grid *t)
 {
-        f->esc_str.narg = 0;
-        f->esc_str.buf[f->esc_str.len] = 0;
+        t->stresc.narg = 0;
+        t->stresc.buf[t->stresc.len] = 0;
 
-        char *p = f->esc_str.buf;
+        char *p = t->stresc.buf;
 
         if (!*p) return;
 
-        while (f->esc_str.narg < ESC_ARG_SIZE) {
-                f->esc_str.arg[f->esc_str.narg++] = p;
+        while (t->stresc.narg < ESC_ARG_SIZE) {
+                t->stresc.arg[t->stresc.narg++] = p;
                 int c;
                 while ((c = *p) && c != ';') ++p;
                 if (!c) return;
@@ -456,20 +503,21 @@ void tstrparse(struct term *f)
 /*
  * Parse and execute string escape sequences.
  */
-void tstrhandle(struct term *f)
+void tstrhandle(struct grid *t)
 {
-        _printf("\e[33m%.*s\e[39m\n", f->esc_str.len, f->esc_str.buf);
+        _printf("\e[33m%.*s\e[39m\n", t->stresc.len, t->stresc.buf);
 
-        tstrparse(f);
+        tstrparse(t);
 
-        int par = f->esc_str.narg ? atoi(f->esc_str.arg[0]) : 0;
+        int par = t->stresc.narg ? atoi(t->stresc.arg[0]) : 0;
 
-        switch (f->esc_str.type) {
+        switch (t->stresc.type) {
         case ']':
                 switch (par) {
                 case 0:
-                        if (f->esc_str.narg > 1)
-                                term_title(f, f->esc_str.arg[1]);
+                        /* TODO */
+                        /* if (t->stresc.narg > 1) */
+                        /*         term_title(t, t->stresc.arg[1]); */
                         break;
                 default:
                         _printf("\e[34mUnhandled `]` style string escape sequence\e[39m\n");
@@ -486,74 +534,83 @@ void tstrhandle(struct term *f)
                 _printf("\e[34mTODO: PM - Privacy message\e[39m\n");
                 break;
         case 'k':
-                term_title(f, f->esc_str.arg[0]);
+                /* TODO */
+                /* term_title(t, t->stresc.arg[0]); */
                 break;
         default:
-                _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", f->esc_str.type);
+                _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", t->stresc.type);
                 break;
         }
 
-        f->esc_str.len = 0;
-        f->esc_str.type = 0;
-        f->esc &= ~(ESC_STR | ESC_STR_END);
+        t->stresc.len = 0;
+        t->stresc.type = 0;
+        t->esc &= ~(ESC_STR | ESC_STR_END);
 }
 
-void tcontrolcode(struct term *f, uint32_t c)
+void tcontrolcode(struct grid *t, uint32_t c)
 {
         _printf("\e[35m\\x%"PRIx32"\e[39m\n", c);
 
         switch (c) {
         case ESC:
-                resetcsi(f);
-                f->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
-                f->esc |= ESC_START;
+                resetcsi(&t->csi);
+                t->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
+                t->esc |= ESC_START;
                 break;
         case LF:
         case VT:
-                tnewline(f, f->mode & MODE_CRLF);
+                /* Should the mode be in the grid? */
+                /* TODO: tnewline(t, t->mode & MODE_CRLF); */
+                tnewline(t, 0);
                 break;
         case CR:
-                tmoveto(f, 0, f->c.y);
+                tmoveto(t, 0, t->c->y);
                 break;
         case HT:
-                tmoveto(f, (f->c.x / 8 + 1) * 8, f->c.y);
+                tmoveto(t, (t->c->x / 8 + 1) * 8, t->c->y);
                 break;
         case BEL:
                 /* The bell sound is annoying anyway. */
-                if (f->esc & ESC_STR_END)
-                        tstrhandle(f);
+                if (t->esc & ESC_STR_END)
+                        tstrhandle(t);
                 break;
         case BS:
-                tmoveto(f, f->c.x - 1, f->c.y);
+                tmoveto(t, t->c->x - 1, t->c->y);
                 break;
         }
 }
 
-void tdeletechar(struct term *f, int n)
+void tdeletechar(struct grid *t, int n)
 {
         int dst, src, size;
-        struct cell *line;
 
-        n = LIMIT(n, 0, f->col - f->c.x);
+        uint32_t *line;
+        struct cell_attr *attr;
 
-        dst = f->c.x;
-        src = f->c.x + n;
-        size = f->col - src;
-        line = f->line[f->c.y];
+        n = LIMIT(n, 0, t->col - t->c->x);
 
-        memmove(&line[dst], &line[src], size * sizeof(struct cell));
-        tclearregion(f, f->col-n, f->c.y, f->col-1, f->c.y);
+        dst = t->c->x;
+        src = t->c->x + n;
+        size = t->col - src;
+        line = t->line[t->c->y];
+        attr = t->attr[t->c->y];
+
+        memmove(&line[dst], &line[src], size * sizeof *line);
+        memmove(&attr[dst], &attr[src], size * sizeof *attr);
+
+        tclearregion(t, t->col - n, t->c->y, t->col - 1, t->c->y);
 }
 
-void tputc(struct term *f, uint32_t c)
+void tputc(struct term *t, uint32_t c)
 {
         /* Here's the legwork of actually interpreting commands. */
+        struct grid *g = t->g;
 
-        if (f->esc & ESC_STR) {
+        if (g->esc & ESC_STR) {
                 if (c == '\a' || c == 030 || c == 032 || c == 033
                         || ISCONTROLC1(c)) {
-                        f->esc &= ~(ESC_START|ESC_STR);
-                        f->esc |= ESC_STR_END;
+                        g->esc &= ~(ESC_START|ESC_STR);
+                        g->esc |= ESC_STR_END;
                         goto check_control_code;
                 }
 
@@ -562,97 +619,97 @@ void tputc(struct term *f, uint32_t c)
                 unsigned len;
                 unsigned char buf[4];
                 utf8encode(c, buf, &len);
-                memmove(&f->esc_str.buf[f->esc_str.len], buf, len);
-                f->esc_str.len += len;
+                memmove(&g->stresc.buf[g->stresc.len], buf, len);
+                g->stresc.len += len;
                 return;
         }
 
  check_control_code:
         if (ISCONTROL(c)) {
-                tcontrolcode(f, c);
-        } else if (f->esc & ESC_START) {
-                if (f->esc & ESC_CSI) {
-                        f->csi.buf[f->csi.len++] = c;
+                tcontrolcode(g, c);
+        } else if (g->esc & ESC_START) {
+                if (g->esc & ESC_CSI) {
+                        g->csi.buf[g->csi.len++] = c;
                         if ((c >= 0x40 && c <= 0x7E)
-                                || f->csi.len >= sizeof(f->csi.buf) - 1) {
-                                f->esc = 0;
+                                || g->csi.len >= sizeof(g->csi.buf) - 1) {
+                                g->esc = 0;
 
                                 /*
                                  * So now we have an entire escape sequence in
-                                 * `f->esc_buf`, just parse it and execute it.
+                                 * `g->esc_buf`, just parse it and execute it.
                                  */
-                                csiparse(f);
-                                tcsihandle(f);
-                                resetcsi(f);
-                                resetesc(f);
+                                csiparse(&g->csi);
+                                tcsihandle(t, &g->csi);
+                                resetcsi(&g->csi);
+                                tresetesc(g);
                         }
                         return;
-                } else if (f->esc & ESC_ALTCHARSET) {
+                } else if (g->esc & ESC_ALTCHARSET) {
                         _printf("TODO: Handle alternate charsets\n");
-                } else if (teschandle(f, c))
-                        resetesc(f);
+                } else if (teschandle(g, c))
+                        tresetesc(g);
         } else {
-                tprintc(f, c);
+                tprintc(g, c);
         }
 }
 
-void thandlegraphicmode(struct term *f, long arg)
+void thandlegraphicmode(struct grid *t, long arg)
 {
         if (arg >= 30 && arg <= 38) {
-                f->c.fg = arg - 30;
+                t->c->fg = arg - 30;
                 return;
         }
 
         if (arg >= 40 && arg <= 48) {
-                f->c.bg = arg - 40;
+                t->c->bg = arg - 40;
                 return;
         }
 
         if (arg >= 90 && arg <= 97) {
-                f->c.fg = arg - 90 + 8;
+                t->c->fg = arg - 90 + 8;
                 return;
         }
 
         if (arg >= 100 && arg <= 107) {
-                f->c.bg = arg - 100 + 8;
+                t->c->bg = arg - 100 + 8;
                 return;
         }
 
         switch (arg) {
         case 0:
-                f->c.fg = -1;
-                f->c.bg = -1;
-                f->c.mode = 0;
+                t->c->fg = -1;
+                t->c->bg = -1;
+                t->c->mode = 0;
                 break;
         case 1: /* Bold */
-                f->c.mode |= CELL_BOLD;
+                t->c->mode |= CELL_BOLD;
                 break;
         case 22: /* Turn off bold */
-                f->c.mode &= ~CELL_BOLD;
+                t->c->mode &= ~CELL_BOLD;
                 break;
         case 3: /* Italic */
-                f->c.mode |= CELL_ITALIC;
+                t->c->mode |= CELL_ITALIC;
                 break;
         case 23: /* Turn off italic */
-                f->c.mode &= ~CELL_ITALIC;
+                t->c->mode &= ~CELL_ITALIC;
                 break;
         case 4: /* Underline */
-                f->c.mode |= CELL_UNDERLINE;
+                t->c->mode |= CELL_UNDERLINE;
                 break;
         case 24: /* Turn off underline */
-                f->c.mode &= ~CELL_UNDERLINE;
+                t->c->mode &= ~CELL_UNDERLINE;
                 break;
         case 7:                 /* Turn on inverse video mode */
-                f->c.mode |= CELL_INVERSE;
+                t->c->mode |= CELL_INVERSE;
                 break;
         case 27:                /* Turn off inverse video mode */
-                f->c.mode &= ~CELL_INVERSE;
+                t->c->mode &= ~CELL_INVERSE;
                 break;
         case 39:
-                f->c.fg = -1;
+                t->c->fg = -1;
                 break;
         case 49:
-                f->c.bg = -1;
+                t->c->bg = -1;
                 break;
         default:
                 fprintf(stderr, "Unknown CSI sequence argument %ld\n", arg);
@@ -660,32 +717,16 @@ void thandlegraphicmode(struct term *f, long arg)
         }
 }
 
-void tswapscreen(struct term *f)
+void tswapscreen(struct term *t)
 {
-        struct cell **tmp = f->line;
-        bool *wraptmp = f->linewrapped;
+        int col = t->g->col, row = t->g->row;
 
-        f->line = f->linealt;
-        f->linealt = tmp;
+        /* Change the primary grid pointer. */
+        if (t->g == t->grid) t->g = t->grid + 1;
+        else t->g = t->grid;
 
-        f->linewrapped = f->linewrappedalt;
-        f->linewrappedalt = wraptmp;
-
-        f->mode ^= MODE_ALTSCREEN;
-        f->font->dirty_display = 1;
-
-        int tmpint = f->altcol;
-        f->altcol = f->col;
-        f->col = tmpint;
-
-        tmpint = f->altrow;
-        f->altrow = f->row;
-        f->row = tmpint;
-
-        tresize(f, f->altcol, f->altrow);
-
-        f->altrow = f->row;
-        f->altcol = f->col;
+        tresize(t->g, col, row);
+        t->mode ^= MODE_ALTSCREEN;
 }
 
 #define TRUECOLOR(r,g,b) ((\
@@ -694,42 +735,42 @@ void tswapscreen(struct term *f)
                 (((b) & 0xFF) << 0)) + 256\
                 )
 
-void tsetattr(struct term *f)
+void tsetattr(struct grid *t)
 {
-        if (!f->csi.narg) {
-                thandlegraphicmode(f, 0);
+        if (!t->csi.narg) {
+                thandlegraphicmode(t, 0);
                 return;
         }
 
-        if (f->csi.narg == 5 && f->csi.arg[0] == 38 && f->csi.arg[1] == 2) {
+        if (t->csi.narg == 5 && t->csi.arg[0] == 38 && t->csi.arg[1] == 2) {
                 /* This is a truecolor fg sequence. */
-                f->c.fg = TRUECOLOR(f->csi.arg[2], f->csi.arg[3], f->csi.arg[4]);
+                t->c->fg = TRUECOLOR(t->csi.arg[2], t->csi.arg[3], t->csi.arg[4]);
                 return;
         }
 
-        if (f->csi.narg == 5 && f->csi.arg[0] == 48 && f->csi.arg[1] == 2) {
+        if (t->csi.narg == 5 && t->csi.arg[0] == 48 && t->csi.arg[1] == 2) {
                 /* This is a truecolor bg sequence. */
-                f->c.bg = TRUECOLOR(f->csi.arg[2], f->csi.arg[3], f->csi.arg[4]);
+                t->c->bg = TRUECOLOR(t->csi.arg[2], t->csi.arg[3], t->csi.arg[4]);
                 return;
         }
 
-        if (f->csi.narg == 3 && f->csi.arg[0] == 38 && f->csi.arg[1] == 5) {
+        if (t->csi.narg == 3 && t->csi.arg[0] == 38 && t->csi.arg[1] == 5) {
                 /* This is a 256 fg sequence. */
-                f->c.fg = f->csi.arg[2];
+                t->c->fg = t->csi.arg[2];
                 return;
         }
 
-        if (f->csi.narg == 3 && f->csi.arg[0] == 48 && f->csi.arg[1] == 5) {
+        if (t->csi.narg == 3 && t->csi.arg[0] == 48 && t->csi.arg[1] == 5) {
                 /* This is a 256 bg sequence. */
-                f->c.bg = f->csi.arg[2];
+                t->c->bg = t->csi.arg[2];
                 return;
         }
 
-        for (int i = 0; i < f->csi.narg; i++)
-                thandlegraphicmode(f, f->csi.arg[i]);
+        for (int i = 0; i < t->csi.narg; i++)
+                thandlegraphicmode(t, t->csi.arg[i]);
 }
 
-void tstrsequence(struct term *f, unsigned char c)
+void tstrsequence(struct grid *t, unsigned char c)
 {
         switch (c) {
         case 0x90:              /* DCS - Device control string */
@@ -746,11 +787,11 @@ void tstrsequence(struct term *f, unsigned char c)
                 break;
         }
 
-        f->esc_str.type = c;
-        f->esc |= ESC_STR;
+        t->stresc.type = c;
+        t->esc |= ESC_STR;
 }
 
-int twrite(struct term *f, const char *buf, int buflen)
+int twrite(struct term *t, const char *buf, int buflen)
 {
         int charsize, n;
 
@@ -758,7 +799,7 @@ int twrite(struct term *f, const char *buf, int buflen)
                 /* TODO: Support commands which alter support for UTF-8. */
                 uint32_t c;
                 if (!(charsize = utf8decode(buf + n, buflen - n, &c))) break;
-                tputc(f, c);
+                tputc(t, c);
         }
 
         return n;
@@ -767,12 +808,12 @@ int twrite(struct term *f, const char *buf, int buflen)
 /*
  * Handles the 'h' escape code.
  */
-void handle_terminal_mode(struct term *f, int set, bool priv)
+void handle_terminal_mode(struct term *t, int set, bool priv)
 {
         int mode = 0;
 
         if (priv) {
-                switch (f->csi.arg[0]) {
+                switch (t->g->csi.arg[0]) {
                 case 1:                 /* DECCKM - Cursor key */
                         mode |= MODE_APPCURSOR;
                         break;
@@ -780,19 +821,19 @@ void handle_terminal_mode(struct term *f, int set, bool priv)
                         mode |= MODE_WRAP;
                         break;
                 case 1049: /* Swap screen and cursor */
-                        tcursor(f, set);
+                        tcursor(t->g, set);
                         /* FALLTHROUGH */
                 case 47: /* swap screen */
                 case 1047:
-                        if (f->mode & MODE_ALTSCREEN)
-                                tclearregion(f, 0, 0, f->col - 1, f->row - 1);
-                        if (set ^ !!(f->mode & MODE_ALTSCREEN))
-                                tswapscreen(f);
-                        if (f->csi.arg[0] != 1049)
+                        if (t->mode & MODE_ALTSCREEN)
+                                tclearregion(t->g, 0, 0, t->g->col - 1, t->g->row - 1);
+                        if (set ^ !!(t->mode & MODE_ALTSCREEN))
+                                tswapscreen(t);
+                        if (t->g->csi.arg[0] != 1049)
                                 break;
                         /* FALLTHROUGH */
                 case 1048:
-                        tcursor(f, set);
+                        tcursor(t->g, set);
                         break;
                 case 25: /* Make cursor visible */
                         mode |= MODE_CURSOR_VISIBLE;
@@ -800,118 +841,119 @@ void handle_terminal_mode(struct term *f, int set, bool priv)
                 }
         }
 
-        if (set) f->mode |= mode;
-        else f->mode &= ~mode;
+        if (set) t->mode |= mode;
+        else t->mode &= ~mode;
 }
 
-#define DEFAULT(x, y) (f->csi.narg ? (x) : (y))
+#define CSIDEFAULT(x,y) (g->csi.narg ? (x) : (y))
 
-void tcsihandle(struct term *f)
+void tcsihandle(struct term *t, struct csi *csi)
 {
-        switch (f->csi.mode[0]) {
+        struct grid *g = t->g;
+
+        switch (csi->mode[0]) {
         case '@': /* ICH -- Insert <n> blank char */
-                tinsertblank(f, f->csi.narg ? f->csi.arg[0] : 1);
+                tinsertblank(g, csi->narg ? csi->arg[0] : 1);
                 break;
         case 'A': /* Move cursor up n lines */
-                tmoveto(f, f->c.x, f->c.y - DEFAULT(f->csi.arg[0], 1));
+                tmoveto(g, g->c->x, g->c->y - CSIDEFAULT(csi->arg[0], 1));
                 break;
         case 'B': /* Move cursor down n lines */
-                tmoveto(f, f->c.x, f->c.y + DEFAULT(f->csi.arg[0], 1));
+                tmoveto(g, g->c->x, g->c->y + CSIDEFAULT(csi->arg[0], 1));
                 break;
         case 'C': /* Move cursor right n columns */
-                tmoveto(f, f->c.x + DEFAULT(f->csi.arg[0], 1), f->c.y);
+                tmoveto(g, g->c->x + CSIDEFAULT(csi->arg[0], 1), g->c->y);
                 break;
-        case 'c':
-                platform_write(f->subprocess, VT_IDENTITY, strlen(VT_IDENTITY));
-                break;
+        /* case 'c': */
+        /*         platform_write(g->subprocess, VT_IDENTITY, strlen(VT_IDENTITY)); */
+        /*         break; */
         case 'D': /* Move cursor left n columns */
-                tmoveto(f, f->c.x - DEFAULT(f->csi.arg[0], 1), f->c.y);
+                tmoveto(g, g->c->x - CSIDEFAULT(csi->arg[0], 1), g->c->y);
                 break;
         case 'h': /* Set terminal mode */
-                handle_terminal_mode(f, 1, f->csi.priv);
+                handle_terminal_mode(t, 1, csi->priv);
                 break;
         case 'H': /* CUP - Move cursor too coordinates */
-                if (!f->csi.narg)
-                        tmoveto(f, 0, 0);
+                if (!csi->narg)
+                        tmoveto(g, 0, 0);
                 else
-                        tmoveto(f, f->csi.arg[1] - 1, f->csi.arg[0] - 1);
+                        tmoveto(g, csi->arg[1] - 1, csi->arg[0] - 1);
                 break;
         case 'J': /* Clear screen */
-                switch (f->csi.arg[0]) {
+                switch (csi->arg[0]) {
                 case 0: /* below */
-                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
-                        if (f->c.y < f->row - 1) {
-                                tclearregion(f, 0, f->c.y + 1, f->col - 1, f->row - 1);
+                        tclearregion(g, g->c->x, g->c->y, g->col - 1, g->c->y);
+                        if (g->c->y < g->row - 1) {
+                                tclearregion(g, 0, g->c->y + 1, g->col - 1, g->row - 1);
                         }
                         break;
                 case 1: /* above */
-                        if (f->c.y > 1)
-                                tclearregion(f, 0, 0, f->col - 1, f->c.y - 1);
-                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
+                        if (g->c->y > 1)
+                                tclearregion(g, 0, 0, g->col - 1, g->c->y - 1);
+                        tclearregion(g, 0, g->c->y, g->c->x, g->c->y);
                         break;
                 case 2: /* all */
-                        tclearregion(f, 0, 0, f->col - 1, f->row - 1);
+                        tclearregion(g, 0, 0, g->col - 1, g->row - 1);
                         break;
                 default:
-                        _printf("Unknown clear argument %ld\n", f->csi.arg[0]);
+                        _printf("Unknown clear argument %ld\n", csi->arg[0]);
                         break;
                 }
                 break;
         case 'K': /* EL - Clear line */
-                if (!f->csi.narg || f->csi.arg[0] == 0)
-                        tclearregion(f, f->c.x, f->c.y, f->col - 1, f->c.y);
-                else if (f->csi.arg[0] == 1)
-                        tclearregion(f, 0, f->c.y, f->c.x, f->c.y);
-                else if (f->csi.arg[0] == 2)
-                        tclearregion(f, 0, f->c.y, f->col - 1, f->c.y);
+                if (!csi->narg || csi->arg[0] == 0)
+                        tclearregion(g, g->c->x, g->c->y, g->col - 1, g->c->y);
+                else if (csi->arg[0] == 1)
+                        tclearregion(g, 0, g->c->y, g->c->x, g->c->y);
+                else if (csi->arg[0] == 2)
+                        tclearregion(g, 0, g->c->y, g->col - 1, g->c->y);
                 break;
         case 'l': /* Reset terminal mode */
-                handle_terminal_mode(f, 0, f->csi.priv);
+                handle_terminal_mode(t, 0, csi->priv);
                 break;
         case 'L': /* IL - Insert n blank lines */
-                tscrolldown(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                tscrolldown(g, g->c->y, csi->narg ? csi->arg[0] : 1);
                 break;
         case 'm':
-                tsetattr(f);
+                tsetattr(g);
                 break;
         case 'M': /* DL - Delete n lines */
-                tscrollup(f, f->c.y, f->csi.narg ? f->csi.arg[0] : 1);
+                tscrollup(g, g->c->y, csi->narg ? csi->arg[0] : 1);
                 break;
         case 'P': /* DCH - Delete n chars */
-                tdeletechar(f, f->csi.narg ? f->csi.arg[0] : 1);
+                tdeletechar(g, csi->narg ? csi->arg[0] : 1);
                 break;
 	case 'S': /* SU - Scroll n line up */
-		tscrollup(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		tscrollup(g, g->top, csi->narg ? csi->arg[0] : 1);
 		break;
 	case 's': /* DECSC - Save cursor position */
 	case 'u': /* DECRC - Restore cursor position */
-		tcursor(f, f->csi.arg[0] == 's');
+		tcursor(g, csi->arg[0] == 's');
 		break;
 	case 'T': /* SD - Scroll n line down */
-		tscrolldown(f, f->top, f->csi.narg ? f->csi.arg[0] : 1);
+		tscrolldown(g, g->top, csi->narg ? csi->arg[0] : 1);
 		break;
         case 'r': /* DECSTBM - Set scroll region */
-                if (!f->csi.narg) tsetscroll(f, 0, f->row - 1);
-                else tsetscroll(f, f->csi.arg[0] - 1, f->csi.arg[1] - 1);
-                tmoveato(f, 0, 0);
+                if (!csi->narg) tsetscroll(g, 0, g->row - 1);
+                else tsetscroll(g, csi->arg[0] - 1, csi->arg[1] - 1);
+                tmoveato(g, 0, 0);
                 break;
         case 'd': /* VPA - Move to <row> */
-                tmoveato(f, f->c.x, (f->csi.narg ? f->csi.arg[0] : 1) - 1);
+                tmoveato(g, g->c->x, (csi->narg ? csi->arg[0] : 1) - 1);
                 break;
         case 'G': /* CHA - Move to <col> */
         case '`': /* HPA */
-                tmoveato(f, (f->csi.narg ? f->csi.arg[0] : 1) - 1, f->c.y);
+                tmoveato(g, (csi->narg ? csi->arg[0] : 1) - 1, g->c->y);
                 break;
         case 'X': /* ECH - Erase n chars */
-                tclearregion(f, f->c.x, f->c.y,
-                             f->c.x + (f->csi.narg ? f->csi.arg[0] : 1), f->c.y);
+                tclearregion(g, g->c->x, g->c->y,
+                             g->c->x + (csi->narg ? csi->arg[0] : 1), g->c->y);
                 break;
         case ' ':
-                if (f->csi.arg[0] < 0 || f->csi.arg[0] > CURSOR_STYLE_MAX)
+                if (csi->arg[0] < 0 || csi->arg[0] > CURSOR_STYLE_MAX)
                         goto unhandled;
-                if (f->csi.mode[1] == 'q') {
-                        f->cursor_style = f->csi.arg[0];
-                        f->font->dirty_display = 1;
+                if (csi->mode[1] == 'q') {
+                        g->c->style = csi->arg[0];
                         break;
                 }
         default:
@@ -923,40 +965,45 @@ unhandled:
         _printf(" ^ \e[33mUnhandled CSI\e[0m\n");
 }
 
-int teschandle(struct term *f, uint32_t c)
+int teschandle(struct grid *g, uint32_t c)
 {
         switch (c) {
         case '[':
-                f->esc |= ESC_CSI;
+                g->esc |= ESC_CSI;
                 return 0;
-        case 'P': /* DCS -- Device Control String */
-        case '_': /* APC -- Application Program Command */
-        case '^': /* PM -- Privacy Message */
-        case ']': /* OSC -- Operating System Command */
-        case 'k': /* old title set compatibility */
-                tstrsequence(f, c);
+        case 'P': /* DCS - Device Control String */
+        case '_': /* APC - Application Program Command */
+        case '^': /* PM - Privacy Message */
+        case ']': /* OSC - Operating System Command */
+        case 'k': /* I think this is an xterm thing */
+                tstrsequence(g, c);
                 return 0;
         case 'M': /* RI - Reverse index */
-                if (f->c.y == f->top) {
-                        tscrolldown(f, f->top, 1);
+                if (g->c->y == g->top) {
+                        tscrolldown(g, g->top, 1);
                 } else {
-                        tmoveto(f, f->c.x, f->c.y - 1);
+                        tmoveto(g, g->c->x, g->c->y - 1);
                 }
                 return 1;
         case '(': /* GZD4 - Set primary charset G0 */
         case ')': /* G1D4 - Set secondary charset G1 */
         case '*': /* G2D4 - Set tertiary charset G2 */
         case '+': /* G3D4 - Set quaternary charset G3 */
-                f->icharset = c - '(';
-                f->esc |= ESC_ALTCHARSET;
+                g->charset = c - '(';
+                g->esc |= ESC_ALTCHARSET;
                 return 0;
         case '\\': /* ST - String terminator */
-                if (f->esc & ESC_STR_END)
-                        tstrhandle(f);
+                if (g->esc & ESC_STR_END)
+                        tstrhandle(g);
                 break;
         default:
                 _printf("\e[31mUnhandled escape %c\e[0m\n", (unsigned char)c);
         }
 
         return 1;
+}
+
+void tresetesc(struct grid *g)
+{
+        g->esc = 0;
 }

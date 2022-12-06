@@ -9,11 +9,11 @@
 #include "font.h"
 #include "window.h"
 
-struct term;
+struct wterm;
 
 struct global {
         struct window window;
-        struct term *focus; /* Currently focused term */
+        struct wterm *focus;    /* Currently focused term */
         struct color color256[256];
         /* TODO: Rename these. */
         struct font_renderer font;

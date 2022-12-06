@@ -8,6 +8,9 @@ enum {
         /*
          * VOLATILE: CELL_BOLD and CELL_ITALIC need to be the same as
          * FONT_BOLD and FONT_ITALIC.
+         *
+         * TODO: The cursor should have a separate mode for font
+         * attributes.
          */
         CELL_BOLD      = 1 << 0,
         CELL_ITALIC    = 1 << 1,
@@ -21,12 +24,6 @@ enum {
         CELL_WRAPNEXT  = 1 << 9,
         CELL_ORIGIN    = 1 << 10,
         CELL_MAX       = CELL_DUMMY,
-};
-
-struct cell {
-        uint32_t c;
-        int mode;
-        int fg, bg;
 };
 
 struct sprite {

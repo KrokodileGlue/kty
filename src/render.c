@@ -3,6 +3,7 @@
 
 #include "render.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "gl.h"                 /* bind_attribute_to_program, bind_unifo... */
@@ -216,14 +217,13 @@ struct color get_color_from_index(struct font_renderer *r, int i)
 /*
  * Renders a `struct cell` into the current termbuffer.
  */
-int render_cell(struct font_renderer *r, struct cell g,
+int render_cell(struct font_renderer *r, uint32_t c, struct cell_attr attr,
                 int x0, int y0, int cw, int ch, int width, int height,
                 int font_size)
 {
-        if (g.mode & CELL_DUMMY) return 0;
+        if (attr.mode & CELL_DUMMY) return 0;
 
-        uint32_t c = g.c;
-        struct sprite *sprite = get_sprite(r->m, g.c, g.mode, font_size);
+        struct sprite *sprite = get_sprite(r->m, c, attr.mode, font_size);
 
         if (!sprite) {
                 fprintf(stderr, "No cell found for U+%x\n", c);
@@ -290,10 +290,10 @@ int render_cell(struct font_renderer *r, struct cell g,
 
         /* TODO: Make default fg and other colors configurable. */
 
-        int bfg = g.fg;
-        int bbg = g.bg;
+        int bfg = attr.fg;
+        int bbg = attr.bg;
 
-        if (g.mode & CELL_INVERSE) {
+        if (attr.mode & CELL_INVERSE) {
                 if (bbg < 0) bbg = 16;
                 if (bfg < 0) bfg = 255;
 
@@ -322,7 +322,7 @@ int render_cell(struct font_renderer *r, struct cell g,
                                  x,
                                  bg);
 
-        if (g.mode & CELL_UNDERLINE)
+        if (attr.mode & CELL_UNDERLINE)
                 render_rectangle(r,
                                  y - 3 * sy + 1 * sy,
                                  y - 3 * sy,
@@ -333,9 +333,9 @@ int render_cell(struct font_renderer *r, struct cell g,
         return 0;
 }
 
-void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch, int width, int height)
+void render_cursor(struct font_renderer *r, struct cursor *cursor, int cw, int ch, int width, int height, bool wide)
 {
-        int x = f->c.x, y = f->c.y;
+        int x = cursor->x, y = cursor->y;
 
         float sx = 2.0 / (float)width;
         float sy = 2.0 / (float)height;
@@ -344,17 +344,17 @@ void render_cursor(struct font_renderer *r, struct term *f, int cw, int ch, int 
         float n = 1 - (ch * y) * sy - LINE_SPACING * y * sy;
         float s = n - ch * sy - LINE_SPACING * sy;
         float e = w + cw * sx;
+
         /* TODO: Default cursor color customization. */
         struct color c = (struct color){ 0, 0.5, 0.5 };
 
-        switch (f->cursor_style) {
+        switch (cursor->style) {
                 case CURSOR_STYLE_BLINKING_BLOCK:
                         /* TODO: Implement blinking block cursor. */
                 case CURSOR_STYLE_DEFAULT:
                 case CURSOR_STYLE_STEADY_BLOCK:
                         /* Thicken the cursor. */
-                        if (f->line[y][x].mode & CELL_WIDE)
-                                e += cw * sx;
+                        if (wide) e += cw * sx;
                         break;
                 case CURSOR_STYLE_BLINKING_UNDERLINE:
                 case CURSOR_STYLE_STEADY_UNDERLINE:
@@ -405,8 +405,10 @@ void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint
         glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void render_term(struct font_renderer *r, struct term *f)
+void render_term(struct font_renderer *r, struct term *f, int font_size)
 {
+        struct grid *g = f->g;
+
         glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
         glViewport(0, 0, f->width, f->height);
         glUseProgram(r->program);
@@ -415,22 +417,20 @@ void render_term(struct font_renderer *r, struct term *f)
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if (r->dirty_display) {
-                /* Reset the VBO render state. */
-                for (int i = 0; i < r->num_fonts; i++)
-                        r->fonts[i].num_cells_in_vbo = 0;
+        /* Reset the VBO render state. */
+        for (int i = 0; i < r->num_fonts; i++)
+                r->fonts[i].num_cells_in_vbo = 0;
 
-                r->num_decoration = 0;
+        r->num_decoration = 0;
 
-                for (int i = 0; i < f->row; i++)
-                        for (int j = 0; j < f->col; j++)
-                                if (f->line[i][j].c)
-                                        render_cell(r, f->line[i][j], j, i, f->cw, f->ch, f->width, f->height, f->font_size);
+        for (int i = 0; i < g->row; i++)
+                for (int j = 0; j < g->col; j++)
+                        if (g->line[i][j])
+                                render_cell(r, g->line[i][j], g->attr[i][j], j, i, f->cw, f->ch, f->width, f->height, font_size);
 
-                /* Add the cursor to the decoration VBO. */
-                if (f->mode & MODE_CURSOR_VISIBLE)
-                        render_cursor(r, f, f->cw, f->ch, f->width, f->height);
-        }
+        /* Add the cursor to the decoration VBO. */
+        if (f->mode & MODE_CURSOR_VISIBLE)
+                render_cursor(r, g->cursor, f->cw, f->ch, f->width, f->height, g->attr[g->cursor->y][g->cursor->x].mode & CELL_WIDE);
 
         /* Render the quads. */
         glUniform1i(r->uniform_is_solid, 1);
@@ -438,11 +438,10 @@ void render_term(struct font_renderer *r, struct term *f)
         glBindBuffer(GL_ARRAY_BUFFER, r->vbo_decoration);
         glEnableVertexAttribArray(r->attribute_coord);
 
-        if (r->dirty_display)
-                glBufferData(GL_ARRAY_BUFFER,
-                             r->num_decoration * 6 * 2 * sizeof(GLfloat),
-                             r->decoration,
-                             GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER,
+                     r->num_decoration * 6 * 2 * sizeof(GLfloat),
+                     r->decoration,
+                     GL_DYNAMIC_DRAW);
 
         glVertexAttribPointer(r->attribute_coord,
                               2,
@@ -454,11 +453,10 @@ void render_term(struct font_renderer *r, struct term *f)
         glBindBuffer(GL_ARRAY_BUFFER, r->vbo_decoration_color);
         glEnableVertexAttribArray(r->attribute_decoration_color);
 
-        if (r->dirty_display)
-                glBufferData(GL_ARRAY_BUFFER,
-                             r->num_decoration * 6 * 3 * sizeof(GLfloat),
-                             r->decoration_color,
-                             GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER,
+                     r->num_decoration * 6 * 3 * sizeof(GLfloat),
+                     r->decoration_color,
+                     GL_DYNAMIC_DRAW);
 
         glVertexAttribPointer(r->attribute_decoration_color,
                               3,
@@ -480,11 +478,10 @@ void render_term(struct font_renderer *r, struct term *f)
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_vertices);
                 glEnableVertexAttribArray(r->attribute_coord);
 
-                if (r->dirty_display)
-                        glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_cells_in_vbo * 6 * 2 * sizeof(GLfloat),
-                                     font->vertices,
-                                     GL_DYNAMIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER,
+                             font->num_cells_in_vbo * 6 * 2 * sizeof(GLfloat),
+                             font->vertices,
+                             GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(r->attribute_coord,
                                       2,
@@ -496,11 +493,10 @@ void render_term(struct font_renderer *r, struct term *f)
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_textures);
                 glEnableVertexAttribArray(r->attribute_decoration_color);
 
-                if (r->dirty_display)
-                        glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
-                                     font->textures,
-                                     GL_DYNAMIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER,
+                             font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
+                             font->textures,
+                             GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(r->attribute_decoration_color,
                                       3,
@@ -512,11 +508,10 @@ void render_term(struct font_renderer *r, struct term *f)
                 glBindBuffer(GL_ARRAY_BUFFER, font->vbo_colors);
                 glEnableVertexAttribArray(r->attribute_color);
 
-                if (r->dirty_display)
-                        glBufferData(GL_ARRAY_BUFFER,
-                                     font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
-                                     font->colors,
-                                     GL_DYNAMIC_DRAW);
+                glBufferData(GL_ARRAY_BUFFER,
+                             font->num_cells_in_vbo * 6 * 3 * sizeof(GLfloat),
+                             font->colors,
+                             GL_DYNAMIC_DRAW);
 
                 glVertexAttribPointer(r->attribute_color,
                                       3,
@@ -532,6 +527,7 @@ void render_term(struct font_renderer *r, struct term *f)
 
                 struct font *f = font->font;
 
+                /* TODO: Don't use a flag, use an update handler */
                 if (f->spritemap_dirty) {
                         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
@@ -563,6 +559,4 @@ void render_term(struct font_renderer *r, struct term *f)
 
                 glDrawArrays(GL_TRIANGLES, 0, font->num_cells_in_vbo * 6);
         }
-
-        /* r->dirty_display = 0; */
 }

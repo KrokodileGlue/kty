@@ -4,11 +4,28 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-struct term;
+#include "util.h"
 
-int eschandle(struct term *f, uint32_t c);
-void resetesc(struct term *f);
-void resetcsi(struct term *f);
-void csiparse(struct term *f);
+struct csi {
+        /* TODO: Don't hard code this buffer size. */
+        char buf[2048];
+        long arg[ESC_ARG_SIZE];
+        unsigned len;
+        int narg;
+        bool priv;
+        int mode[2];
+};
+
+struct stresc {
+        /* TODO: Nor this one. */
+        char buf[2048];
+        unsigned len;
+        unsigned char type;
+        char *arg[ESC_ARG_SIZE];
+        int narg;
+};
+
+void resetcsi(struct csi *csi);
+void csiparse(struct csi *csi);
 
 #endif

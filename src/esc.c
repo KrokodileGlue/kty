@@ -7,59 +7,54 @@
 #include <string.h>  /* memset */
 #include <unistd.h>
 
-#include "term.h"   /* term, term::(anonymous), cursor, ESC_ALTCHARSET */
+#include "term.h"    /* term, term::(anonymous), cursor, ESC_ALTCHARSET */
 #include "render.h"  /* font_renderer */
 #include "t.h"       /* tclearregion, tmoveto, tscrolldown, tsetscroll */
 #include "util.h"    /* _printf, ESC_ARG_SIZE */
 
-void csiparse(struct term *f)
+void csiparse(struct csi *csi)
 {
-        f->csi.narg = 0;
-        f->csi.buf[f->csi.len] = 0;
+        csi->narg = 0;
+        csi->buf[csi->len] = 0;
 
-        char *p = f->csi.buf;
+        char *p = csi->buf;
 
         if (*p == '?') {
-                f->csi.priv = 1;
+                csi->priv = 1;
                 p++;
         }
 
-        while (p < f->csi.buf + f->csi.len) {
+        while (p < csi->buf + csi->len) {
                 char *np = NULL;
                 long v = strtol(p, &np, 10);
                 if (np == p) break;
                 if (v == LONG_MAX || v == LONG_MIN) v = -1;
-                f->csi.arg[f->csi.narg++] = v;
+                csi->arg[csi->narg++] = v;
                 p = np;
 
                 /*
-                 * TODO: Investigate why some applications seem to use : instad
-                 * of ; for some sequences.
+                 * TODO: Investigate why some applications seem to use
+                 * : instead of ; for some sequences.
                  */
-                if ((*p != ';' && *p != ':') || f->csi.narg == ESC_ARG_SIZE)
+                if ((*p != ';' && *p != ':') || csi->narg == ESC_ARG_SIZE)
                         break;
                 p++;
         }
 
-        f->csi.mode[0] = *p++;
-        f->csi.mode[1] = (p < f->csi.buf + f->csi.len) ? *p : 0;
+        csi->mode[0] = *p++;
+        csi->mode[1] = (p < csi->buf + csi->len) ? *p : 0;
 
 #ifdef DEBUG
         static char buf[2048] = { 0 };
-        snprintf(buf, sizeof buf, "%.*s%s -> ", f->csi.len, f->csi.buf, f->csi.priv ? " (priv)" : "");
-        for (int i = 0; i < f->csi.narg; i++)
-                snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%ld ", f->csi.arg[i]);
-        snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "mode %c mode %d\n", f->csi.mode[0], f->csi.mode[1]);
+        snprintf(buf, sizeof buf, "%.*s%s -> ", csi->len, csi->buf, csi->priv ? " (priv)" : "");
+        for (int i = 0; i < csi->narg; i++)
+                snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "%ld ", csi->arg[i]);
+        snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "mode %c mode %d\n", csi->mode[0], csi->mode[1]);
         _printf("%s", buf);
 #endif
 }
 
-void resetcsi(struct term *f)
+void resetcsi(struct csi *csi)
 {
-        memset(&f->csi, 0, sizeof f->csi);
-}
-
-void resetesc(struct term *f)
-{
-        f->esc = 0;
+        memset(csi, 0, sizeof *csi);
 }

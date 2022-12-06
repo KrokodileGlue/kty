@@ -42,12 +42,6 @@ struct font_renderer {
         /* Width of height and window in pixels. */
         int width, height;
 
-        /*
-         * This could mean new characters to display or a change in
-         * the position/display of the cursor.
-         */
-        int dirty_display;
-
         struct font_data {
                 GLuint sprite_texture;
                 GLuint vbo_vertices;
@@ -65,9 +59,8 @@ struct font_renderer {
 };
 
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256);
-void render_term(struct font_renderer *r, struct term *f);
+void render_term(struct font_renderer *r, struct term *f, int font_size);
 void render_load_fonts(struct font_renderer *r);
 void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint tex);
-void render_term(struct font_renderer *r, struct term *f);
 
 #endif
