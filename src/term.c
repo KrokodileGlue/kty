@@ -18,13 +18,9 @@ struct term *term_new(int width, int height)
 
         f->mode = MODE_CURSOR_VISIBLE;
 
-        f->grid[0].cursor[0].fg = f->grid[0].cursor[0].bg = -1;
-        f->grid[0].cursor[1].fg = f->grid[0].cursor[1].bg = -1;
-        f->grid[1].cursor[0].fg = f->grid[1].cursor[0].bg = -1;
-        f->grid[1].cursor[1].fg = f->grid[1].cursor[1].bg = -1;
-
-        f->grid[0].c = f->grid[0].cursor;
-        f->grid[1].c = f->grid[1].cursor;
+        f->cursor[0].fg = f->cursor[0].bg = -1;
+        f->cursor[1].fg = f->cursor[1].bg = -1;
+        f->c = f->cursor;
 
         f->g = f->grid;
 
@@ -64,7 +60,7 @@ void term_set_font_size(struct term *f, int cw, int ch)
 {
         f->cw = cw, f->ch = ch;
         f->g->top = 0, f->g->bot = f->height / (f->ch + LINE_SPACING) - 1;
-        tresize(f->g, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
+        tresize(f, f->width / f->cw, f->height / (f->ch + LINE_SPACING));
 }
 
 void term_title(struct term *f, const char *title)
@@ -79,5 +75,5 @@ void term_resize(struct term *t, int width, int height)
 {
         t->width = width, t->height = height;
         t->g->top = 0, t->g->bot = height / (t->ch + LINE_SPACING) - 1;
-        tresize(t->g, width / t->cw, height / (t->ch + LINE_SPACING));
+        tresize(t, width / t->cw, height / (t->ch + LINE_SPACING));
 }

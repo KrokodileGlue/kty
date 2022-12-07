@@ -430,7 +430,7 @@ void render_term(struct font_renderer *r, struct term *f, int font_size)
 
         /* Add the cursor to the decoration VBO. */
         if (f->mode & MODE_CURSOR_VISIBLE)
-                render_cursor(r, g->cursor, f->cw, f->ch, f->width, f->height, g->attr[g->cursor->y][g->cursor->x].mode & CELL_WIDE);
+                render_cursor(r, f->c, f->cw, f->ch, f->width, f->height, g->attr[f->c->y][f->c->x].mode & CELL_WIDE);
 
         /* Render the quads. */
         glUniform1i(r->uniform_is_solid, 1);

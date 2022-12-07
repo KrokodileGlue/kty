@@ -48,13 +48,13 @@ struct term {
 
         /* State */
 
+        struct cursor cursor[2];
+        struct cursor *c;
+
         struct grid {
                 uint32_t **line;
                 struct cell_attr { int mode, fg, bg; } **attr;
                 bool *wrap;
-
-                struct cursor cursor[2];
-                struct cursor *c;
 
                 int row, col;
                 int top, bot;
