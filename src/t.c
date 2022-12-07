@@ -74,22 +74,23 @@ void tcursor(struct term *t, int save)
 static void tgrow(struct term *t, int col, int row)
 {
         struct grid *g = t->g;
+
         g->line = realloc(g->line, row * sizeof *g->line);
         g->attr = realloc(g->attr, row * sizeof *g->attr);
         g->wrap = realloc(g->wrap, row * sizeof *g->wrap);
 
         for (int i = g->row; i < row; i++) {
-                g->line[i] = calloc(g->col, sizeof *g->line[i]);
-                g->attr[i] = calloc(g->col, sizeof *g->attr[i]);
+                g->line[i] = calloc(col, sizeof **g->line);
+                g->attr[i] = calloc(col, sizeof **g->attr);
                 g->wrap[i] = 0;
         }
 
         if (col > g->col)
                 for (int i = 0; i < row; i++) {
-                        g->line[i] = realloc(g->line[i], col * sizeof *g->line[i]);
+                        g->line[i] = realloc(g->line[i], col * sizeof **g->line);
                         memset(g->line[i] + g->col, 0, (col - g->col) * sizeof **g->line);
 
-                        g->attr[i] = realloc(g->attr[i], col * sizeof *g->attr[i]);
+                        g->attr[i] = realloc(g->attr[i], col * sizeof **g->attr);
                         memset(g->attr[i] + g->col, 0, (col - g->col) * sizeof **g->attr);
                 }
 }
@@ -97,8 +98,9 @@ static void tgrow(struct term *t, int col, int row)
 static void twrap(struct term *t, int col, int row)
 {
         struct grid *g = t->g;
+
         bool wrapped[row];
-        memset(wrapped, 0, row * sizeof(bool));
+        memset(wrapped, 0, sizeof wrapped);
 
         if (col > g->col) {
                 for (int i = 0; i < row; i++) {
@@ -114,6 +116,7 @@ static void twrap(struct term *t, int col, int row)
                                 if (b.y >= row || a.y >= row) break;
 
                                 g->line[a.y][a.x] = g->line[b.y][b.x];
+                                g->attr[a.y][a.x] = g->attr[b.y][b.x];
 
                                 if (g->line[b.y][b.x])
                                         lastlineupdated = a.y;
@@ -204,8 +207,8 @@ static void twrap(struct term *t, int col, int row)
                                                 a.x = 0;
                                                 a.y++;
                                                 if (a.y >= row) break;
-                                                memset(g->line[a.y], 0, col * sizeof *g->line);
-                                                memset(g->attr[a.y], 0, col * sizeof *g->attr);
+                                                memset(g->line[a.y], 0, col * sizeof **g->line);
+                                                memset(g->attr[a.y], 0, col * sizeof **g->attr);
                                         }
                                 }
 
@@ -238,7 +241,7 @@ static void twrap(struct term *t, int col, int row)
                                 memcpy(block[j], g->line[i + j], g->col * sizeof **block);
 
                                 attrblock[j] = malloc(g->col * sizeof **attrblock);
-                                memcpy(attrblock[j], g->line[i + j], g->col * sizeof **attrblock);
+                                memcpy(attrblock[j], g->attr[i + j], g->col * sizeof **attrblock);
                         }
 
                         while (b.y <= endofblock && a.y < row && b.y < row) {
@@ -264,7 +267,8 @@ static void twrap(struct term *t, int col, int row)
 
                                         if (a.y >= endofblock + 1) {
                                                 tscrolldown(t, a.y, 1);
-                                                memset(g->line[a.y], 0, col * sizeof *g->line);
+                                                memset(g->line[a.y], 0, col * sizeof **g->line);
+                                                memset(g->attr[a.y], 0, col * sizeof **g->attr);
                                                 if (t->c->y >= a.y) t->c->y++;
                                         }
                                 }
@@ -903,7 +907,7 @@ void tcsihandle(struct term *t, struct csi *csi)
 {
         struct grid *g = t->g;
 
-        switch (csi->mode[0]) {
+        switch (*csi->mode) {
         case '@': /* ICH -- Insert <n> blank char */
                 tinsertblank(t, csi->narg ? csi->arg[0] : 1);
                 break;
@@ -980,7 +984,7 @@ void tcsihandle(struct term *t, struct csi *csi)
 		break;
 	case 's': /* DECSC - Save cursor position */
 	case 'u': /* DECRC - Restore cursor position */
-		tcursor(t, csi->arg[0] == 's');
+		tcursor(t, *csi->mode == 's');
 		break;
 	case 'T': /* SD - Scroll n line down */
 		tscrolldown(t, g->top, csi->narg ? csi->arg[0] : 1);

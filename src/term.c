@@ -59,7 +59,6 @@ struct term *term_new(int width, int height)
 void term_set_font_size(struct term *t, int cw, int ch)
 {
         t->cw = cw, t->ch = ch;
-        t->g->top = 0, t->g->bot = t->height / (t->ch + LINE_SPACING) - 1;
         tresize(t, t->width / t->cw, t->height / (t->ch + LINE_SPACING));
 }
 
