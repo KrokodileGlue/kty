@@ -300,18 +300,17 @@ void tresize(struct term *t, int col, int row)
         /* Save a little effort. */
         if (g->col == col && g->row == row) return;
 
+        t->c->x = LIMIT(t->c->x, 0, col - 1);
+        t->c->y = LIMIT(t->c->y, 0, row - 1);
+
         tgrow(t, col, row);
-
-        t->c->x = LIMIT(t->c->x, 0, col - 1);
-        t->c->y = LIMIT(t->c->y, 0, row - 1);
         twrap(t, col, row);
-        t->c->x = LIMIT(t->c->x, 0, col - 1);
-        t->c->y = LIMIT(t->c->y, 0, row - 1);
-
-        tsetscroll(t, 0, row - 1);
-
         g->col = col;
         g->row = row;
+        tsetscroll(t, 0, row - 1);
+
+        t->c->x = LIMIT(t->c->x, 0, col - 1);
+        t->c->y = LIMIT(t->c->y, 0, row - 1);
 }
 
 void tprintc(struct term *t, uint32_t c)
@@ -775,10 +774,8 @@ void tswapscreen(struct term *t)
         if (t->g == t->grid) t->g = t->grid + 1;
         else t->g = t->grid;
 
-        if (col != t->g->col || row != t->g->row) {
-                t->g->top = 0, t->g->bot = row - 1;
+        if (col != t->g->col || row != t->g->row)
                 tresize(t, col, row);
-        }
 
         t->mode ^= MODE_ALTSCREEN;
 }
