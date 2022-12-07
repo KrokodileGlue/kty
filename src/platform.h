@@ -1,5 +1,4 @@
-#ifndef PLATFORM_H
-#define PLATFORM_H
+#pragma once
 
 #include <stdio.h>
 
@@ -11,5 +10,3 @@ int platform_read(struct subprocess *p, const char *buf, int n);
 int platform_write(struct subprocess *p, const char *buf, int n);
 void platform_inform_subprocess_of_resize(struct subprocess *p, int col, int row);
 FILE *platform_open_config(void);
-
-#endif

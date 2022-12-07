@@ -1,5 +1,4 @@
-#ifndef ESC_H
-#define ESC_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -27,5 +26,3 @@ struct stresc {
 
 void resetcsi(struct csi *csi);
 void csiparse(struct csi *csi);
-
-#endif

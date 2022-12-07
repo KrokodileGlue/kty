@@ -1,5 +1,4 @@
-#ifndef FRAME_H
-#define FRAME_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -86,5 +85,3 @@ struct term *term_new(int width, int height);
 void term_title(struct term *f, const char *title);
 void term_set_font_size(struct term *f, int cw, int ch);
 void term_resize(struct term *t, int width, int height);
-
-#endif

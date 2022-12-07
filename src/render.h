@@ -1,5 +1,4 @@
-#ifndef RENDER_H
-#define RENDER_H
+#pragma once
 
 #include <GL/glew.h>
 #include <freetype/freetype.h>
@@ -62,5 +61,3 @@ int render_init(struct font_renderer *r, struct font_manager *m, struct color *c
 void render_term(struct font_renderer *r, struct term *f, int font_size);
 void render_load_fonts(struct font_renderer *r);
 void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint tex);
-
-#endif

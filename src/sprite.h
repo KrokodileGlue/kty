@@ -1,5 +1,4 @@
-#ifndef SPRITE_H
-#define SPRITE_H
+#pragma once
 
 #include <stdint.h>
 #include <freetype/freetype.h>
@@ -37,5 +36,3 @@ struct sprite {
         int height;
         int font_size;
 };
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef UTIL_H
-#define UTIL_H
+#pragma once
 
 /* No one will ever need more than 16 fonts. */
 #define MAX_FONTS 16
@@ -31,6 +30,4 @@ void _printf(const char *func, const char *fmt, ...);
 #define _printf(...) _printf(__func__, __VA_ARGS__)
 #else
 #define _printf(...) do {} while (0)
-#endif
-
 #endif

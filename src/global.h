@@ -1,5 +1,4 @@
-#ifndef GLOBAL_H
-#define GLOBAL_H
+#pragma once
 
 #include <GL/glew.h> // IWYU pragma: keep
 #include <GLFW/glfw3.h>
@@ -25,5 +24,3 @@ struct global {
 int global_init(struct global *k);
 int global_notify_title_change(struct term *f);
 int global_render(struct global *k);
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef WINDOW_H
-#define WINDOW_H
+#pragma once
 
 #include <stdio.h>
 #include <pthread.h>
@@ -47,5 +46,3 @@ void window_spawn(struct window *w);
  * `render.c`.
  */
 void window_render(struct window *w, struct font_renderer *r);
-
-#endif

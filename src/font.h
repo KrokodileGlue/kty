@@ -1,5 +1,4 @@
-#ifndef FONT_H
-#define FONT_H
+#pragma once
 
 #include <stdint.h>
 
@@ -51,5 +50,3 @@ struct font_manager {
 int font_manager_init(struct font_manager *m);
 struct sprite *get_sprite(struct font_manager *r, uint32_t c, int mode, int font_size);
 void font_get_dimensions(struct font_manager *m, int *cw, int *ch, int font_size);
-
-#endif
