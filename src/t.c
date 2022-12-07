@@ -19,8 +19,8 @@
 #include "platform.h"
 
 void tswapscreen(struct term *t);
-int twrite(struct term *f, const char *buf, int buflen);
-void tputc(struct term *f, uint32_t c);
+int twrite(struct term *t, const char *buf, int buflen);
+void tputc(struct term *t, uint32_t c);
 void tcontrolcode(struct term *t, uint32_t c);
 void tnewline(struct term *t, int first_col);
 void tscrollup(struct term *t, int orig, int n);
@@ -37,7 +37,7 @@ void tstrsequence(struct term *t, unsigned char c);
 void tstrhandle(struct term *t);
 void tsetattr(struct term *t);
 void tcursor(struct term *t, int save);
-void tcsihandle(struct term *f, struct csi *csi);
+void tcsihandle(struct term *t, struct csi *csi);
 int teschandle(struct term *t, uint32_t c);
 void handle_gridinal_mode(struct term *t, int set, bool priv);
 void tresetesc(struct term *t);
@@ -61,7 +61,6 @@ enum {
  */
 void tcursor(struct term *t, int save)
 {
-        struct grid *g = t->g;
         _printf("%s cursor\n", save ? "Saving" : "Loading");
         if (save) t->cursor[1] = *t->c;
         else *t->c = t->cursor[1];
@@ -700,7 +699,6 @@ void tputc(struct term *t, uint32_t c)
 
 void thandlegraphicmode(struct term *t, long arg)
 {
-        struct grid *g = t->g;
         if (arg >= 30 && arg <= 38) {
                 t->c->fg = arg - 30;
                 return;
@@ -765,7 +763,6 @@ void thandlegraphicmode(struct term *t, long arg)
 
 void tswapscreen(struct term *t)
 {
-        struct grid *g = t->g;
         _printf("Swapping to %s\n",
                 t->mode & MODE_ALTSCREEN ? "primary" : "alternate");
         int col = t->g->col, row = t->g->row;
@@ -848,7 +845,6 @@ void tstrsequence(struct term *t, unsigned char c)
 
 int twrite(struct term *t, const char *buf, int buflen)
 {
-        struct grid *g = t->g;
         int charsize, n;
 
         for (n = 0; n < buflen; n += charsize) {
@@ -866,7 +862,6 @@ int twrite(struct term *t, const char *buf, int buflen)
  */
 void handle_terminal_mode(struct term *t, int set, bool priv)
 {
-        struct grid *g = t->g;
         int mode = 0;
 
         if (priv) {

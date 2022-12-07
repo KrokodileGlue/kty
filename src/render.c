@@ -405,12 +405,12 @@ void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint
         glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void render_term(struct font_renderer *r, struct term *f, int font_size)
+void render_term(struct font_renderer *r, struct term *t, int font_size)
 {
-        struct grid *g = f->g;
+        struct grid *g = t->g;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, f->framebuffer);
-        glViewport(0, 0, f->width, f->height);
+        glBindFramebuffer(GL_FRAMEBUFFER, t->framebuffer);
+        glViewport(0, 0, t->width, t->height);
         glUseProgram(r->program);
         /* TODO: Clean up the framebuffer. */
 
@@ -426,11 +426,11 @@ void render_term(struct font_renderer *r, struct term *f, int font_size)
         for (int i = 0; i < g->row; i++)
                 for (int j = 0; j < g->col; j++)
                         if (g->line[i][j])
-                                render_cell(r, g->line[i][j], g->attr[i][j], j, i, f->cw, f->ch, f->width, f->height, font_size);
+                                render_cell(r, g->line[i][j], g->attr[i][j], j, i, t->cw, t->ch, t->width, t->height, font_size);
 
         /* Add the cursor to the decoration VBO. */
-        if (f->mode & MODE_CURSOR_VISIBLE)
-                render_cursor(r, f->c, f->cw, f->ch, f->width, f->height, g->attr[f->c->y][f->c->x].mode & CELL_WIDE);
+        if (t->mode & MODE_CURSOR_VISIBLE)
+                render_cursor(r, t->c, t->cw, t->ch, t->width, t->height, g->attr[t->c->y][t->c->x].mode & CELL_WIDE);
 
         /* Render the quads. */
         glUniform1i(r->uniform_is_solid, 1);
