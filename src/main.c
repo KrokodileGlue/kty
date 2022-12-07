@@ -270,10 +270,7 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
                         break;
                 }
 
-                if (keys[i].appcursor < 0 && !(f->term->mode & MODE_APPCURSOR))
-                        continue;
-
-                if (keys[i].appcursor > 0 && (f->term->mode & MODE_APPCURSOR))
+                if (f->term->mode & MODE_APPCURSOR ? keys[i].appcursor < 0 : keys[i].appcursor > 0)
                         continue;
 
                 s = keys[i].s;
