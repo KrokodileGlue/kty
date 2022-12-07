@@ -75,14 +75,41 @@ static void tgrow(struct term *t, int col, int row)
 {
         struct grid *g = t->g;
 
-        g->line = realloc(g->line, row * sizeof *g->line);
-        g->attr = realloc(g->attr, row * sizeof *g->attr);
-        g->wrap = realloc(g->wrap, row * sizeof *g->wrap);
+        if (row > g->row) {
+                g->line = realloc(g->line, row * sizeof *g->line);
+                g->attr = realloc(g->attr, row * sizeof *g->attr);
+                g->wrap = realloc(g->wrap, row * sizeof *g->wrap);
 
-        for (int i = g->row; i < row; i++) {
-                g->line[i] = calloc(col, sizeof **g->line);
-                g->attr[i] = calloc(col, sizeof **g->attr);
-                g->wrap[i] = 0;
+                /*
+                 * The reason we use `max(col, g->col)` here is to
+                 * ensure that all lines have _at least_ enough for
+                 * the original size (i.e. never shrinking a line
+                 * buffer) but also being big enough to accomodate
+                 * `col` columns.
+                 *
+                 * If we were to just allocate `col` then horizontally
+                 * shrinking would truncate the lines, destroying the
+                 * information needed to wrap the text. Just
+                 * allocating `g->col` wouldn't be enough if
+                 * horizontally growing.
+                 *
+                 * Of course that's bullshit because these lines are
+                 * being added to the end after vertical growth, but
+                 * basically it would require special cases in `twrap`
+                 * otherwise. `twrap` assumes that all lines can be
+                 * read to the original width. So just close your eyes
+                 * and imagine that the two paragraphs above are true
+                 * for this case and it makes sense; `twrap` doesn't
+                 * know they're not true.
+                 */
+
+#define max(x,y) (x > y ? x : y)
+
+                for (int i = g->row; i < row; i++) {
+                        g->line[i] = calloc(max(col, g->col), sizeof **g->line);
+                        g->attr[i] = calloc(max(col, g->col), sizeof **g->attr);
+                        g->wrap[i] = 0;
+                }
         }
 
         if (col > g->col)
