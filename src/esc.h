@@ -2,25 +2,30 @@
 
 #include <stdbool.h>
 
-#include "util.h"    /* _printf, ESC_ARG_SIZE */
+#include "util.h"    /* ESC_ARG_SIZE */
 
 struct csi {
         /* TODO: Don't hard code this buffer size. */
         char buf[2048];
-        long arg[ESC_ARG_SIZE];
         unsigned len;
+
+        long arg[512];
         int narg;
+
         bool priv;
-        int mode[2];
+
+        char mode[2];
 };
 
 struct stresc {
         /* TODO: Nor this one. */
         char buf[2048];
         unsigned len;
-        unsigned char type;
-        char *arg[ESC_ARG_SIZE];
+
+        char *arg[512];
         int narg;
+
+        char type;
 };
 
 void csiparse(struct csi *csi);

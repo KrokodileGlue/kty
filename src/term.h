@@ -7,6 +7,7 @@
 
 #include "util.h"
 #include "sprite.h"
+#include "esc.h"
 
 struct cursor {
         int x, y, mode, state;
@@ -25,14 +26,6 @@ struct cursor {
 };
 
 enum {
-        ESC_START      = 1 << 0,
-        ESC_CSI        = 1 << 1,
-        ESC_STR        = 1 << 2,
-        ESC_STR_END    = 1 << 3,
-        ESC_ALTCHARSET = 1 << 4,
-};
-
-enum {
         MODE_CURSOR_VISIBLE = 1 << 0,
         MODE_CRLF           = 1 << 1,
         MODE_APPCURSOR      = 1 << 2,
@@ -41,10 +34,7 @@ enum {
 };
 
 struct term {
-        /* State */
-
-        struct cursor cursor[2];
-        struct cursor *c;
+        struct cursor c[2];
 
         struct grid {
                 uint32_t **line;
@@ -54,12 +44,27 @@ struct term {
                 int row, col;
                 int top, bot;
 
+                /*
+                 * In st swapping the screen resets the charset
+                 * because the charset is considered a part of the
+                 * global state. In kitty each screen remembers its
+                 * own charset when you swap back and forth. We'll go
+                 * with kitty's behavior and make the charset a
+                 * per-screen state for no reason in particular.
+                 */
                 int charset;
         } grid[2];
 
-        int esc;                /* Escape state */
-        struct csi *csi;
-        struct stresc *stresc;
+        enum {
+                ESC_START      = 1 << 0, /* Always set during parsing */
+                ESC_CSI        = 1 << 1, /* Always set during CSI parsing */
+                ESC_ALTCHARSET = 1 << 2, /* Always set during ... parsing */
+                ESC_STR        = 1 << 3, /* Always set during ... parsing */
+                ESC_STR_END    = 1 << 4, /* Set after string termination */
+        } esc;
+
+        struct csi csi;
+        struct stresc stresc;
 
         /*
          * There are two grids: the primary grid and the alternate

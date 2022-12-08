@@ -19,14 +19,10 @@ struct term *term_new()
 
         t->mode = MODE_CURSOR_VISIBLE;
 
-        t->cursor[0].fg = t->cursor[0].bg = -1;
-        t->cursor[1].fg = t->cursor[1].bg = -1;
-        t->c = t->cursor;
+        t->c[0].fg = t->c[0].bg = -1;
+        t->c[1].fg = t->c[1].bg = -1;
 
         t->g = t->grid;
-
-        t->csi = calloc(1, sizeof *t->csi);
-        t->stresc = calloc(1, sizeof *t->stresc);
 
         return t;
 }
