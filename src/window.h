@@ -5,6 +5,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+#include <GL/glew.h>
+
 #include "platform.h"
 
 struct global;
@@ -15,6 +17,12 @@ struct window {
                 pthread_t thread; /* TODO: Move this into platform. */
                 struct subprocess *subprocess;
 
+                /* TODO: Make these opaque handles for a graphics API. */
+                GLuint framebuffer;
+                GLuint tex_color_buffer;
+
+                int cw, ch;
+                int width, height;
                 int font_size;
 
                 /* Input buffer */
@@ -23,6 +31,7 @@ struct window {
 
                 struct term *term;
 
+                struct window *window;
                 struct wterm *next;
         } *wterm;
 
@@ -40,6 +49,7 @@ struct window {
 void window_init(struct window *w);
 void window_place(struct window *w, int x0, int y0, int x1, int y1);
 void window_spawn(struct window *w);
+void window_change_font_size(struct wterm *wt, int delta);
 
 /*
  * TODO: Move rendering out of individual components and into

@@ -10,7 +10,7 @@
 
 extern struct global *k;
 
-struct term *term_new(int width, int height)
+struct term *term_new()
 {
         /* The shell is running, now set up the window/graphics. */
         struct term *t = calloc(1, sizeof *t);
@@ -25,45 +25,10 @@ struct term *term_new(int width, int height)
 
         t->g = t->grid;
 
-        t->width = width;
-        t->height = height;
-
         t->csi = calloc(1, sizeof *t->csi);
         t->stresc = calloc(1, sizeof *t->stresc);
 
-        /* TODO: None of this should be here. */
-        glGenFramebuffers(1, &t->framebuffer);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, t->framebuffer);
-
-        /* Set up the texture */
-        glGenTextures(1, &t->tex_color_buffer);
-        glBindTexture(GL_TEXTURE_2D, t->tex_color_buffer);
-
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-        /* TODO: Don't use the window width and height here. */
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0,
-                GL_RGB, GL_UNSIGNED_BYTE, NULL);
-
-        glBindTexture(GL_TEXTURE_2D, 0);
-
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                GL_TEXTURE_2D, t->tex_color_buffer, 0);
-
-        GLuint status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-        if (status != GL_FRAMEBUFFER_COMPLETE)
-                _printf("Framebuffer status: %u\n", status);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
         return t;
-}
-
-void term_set_font_size(struct term *t, int cw, int ch)
-{
-        t->cw = cw, t->ch = ch;
-        term_resize(t, t->width, t->height);
 }
 
 void term_title(struct term *t, const char *title)
@@ -74,8 +39,7 @@ void term_title(struct term *t, const char *title)
         global_notify_title_change(t);
 }
 
-void term_resize(struct term *t, int width, int height)
+void term_resize(struct term *t, int col, int row)
 {
-        t->width = width, t->height = height;
-        tresize(t, width / t->cw, height / (t->ch + LINE_SPACING));
+        tresize(t, col, row);
 }

@@ -41,9 +41,6 @@ enum {
 };
 
 struct term {
-        int cw, ch;             /* Character width/height */
-        int width, height;      /* Dimensions in pixels */
-
         /* State */
 
         struct cursor cursor[2];
@@ -74,13 +71,8 @@ struct term {
         int mode;
 
         char *title;
-
-        /* TODO: Move these out into window.h */
-        GLuint framebuffer;
-        GLuint tex_color_buffer;
 };
 
-struct term *term_new(int width, int height);
+struct term *term_new();
 void term_title(struct term *f, const char *title);
-void term_set_font_size(struct term *f, int cw, int ch);
-void term_resize(struct term *t, int width, int height);
+void term_resize(struct term *t, int col, int row);

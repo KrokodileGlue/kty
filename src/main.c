@@ -220,18 +220,12 @@ void key_callback(GLFWwindow *window, int key, int scancode, int action, int mod
         }
 
         if (key == GLFW_KEY_EQUAL && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
-                int cw, ch;
-                font_get_dimensions(&k->m, &cw, &ch, ++k->focus->font_size);
-                term_set_font_size(k->focus->term, cw, ch);
-                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->term->g->col, k->focus->term->g->row);
+                window_change_font_size(k->focus, 1);
                 return;
         }
 
         if (key == GLFW_KEY_MINUS && mods & GLFW_MOD_CONTROL && mods & GLFW_MOD_SHIFT) {
-                int cw, ch;
-                font_get_dimensions(&k->m, &cw, &ch, --k->focus->font_size);
-                term_set_font_size(k->focus->term, cw, ch);
-                platform_inform_subprocess_of_resize(k->focus->subprocess, k->focus->term->g->col, k->focus->term->g->row);
+                window_change_font_size(k->focus, -1);
                 return;
         }
 

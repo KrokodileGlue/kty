@@ -8,6 +8,7 @@
 
 #include "gl.h"                 /* bind_attribute_to_program, bind_unifo... */
 #include "term.h"
+#include "window.h"
 
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256)
 {
@@ -405,12 +406,13 @@ void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint
         glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-void render_term(struct font_renderer *r, struct term *t, int font_size)
+void render_wterm(struct font_renderer *r, struct wterm *wt)
 {
+        struct term *t = wt->term;
         struct grid *g = t->g;
 
-        glBindFramebuffer(GL_FRAMEBUFFER, t->framebuffer);
-        glViewport(0, 0, t->width, t->height);
+        glBindFramebuffer(GL_FRAMEBUFFER, wt->framebuffer);
+        glViewport(0, 0, wt->width, wt->height);
         glUseProgram(r->program);
         /* TODO: Clean up the framebuffer. */
 
@@ -426,11 +428,11 @@ void render_term(struct font_renderer *r, struct term *t, int font_size)
         for (int i = 0; i < g->row; i++)
                 for (int j = 0; j < g->col; j++)
                         if (g->line[i][j])
-                                render_cell(r, g->line[i][j], g->attr[i][j], j, i, t->cw, t->ch, t->width, t->height, font_size);
+                                render_cell(r, g->line[i][j], g->attr[i][j], j, i, wt->cw, wt->ch, wt->width, wt->height, wt->font_size);
 
         /* Add the cursor to the decoration VBO. */
         if (t->mode & MODE_CURSOR_VISIBLE)
-                render_cursor(r, t->c, t->cw, t->ch, t->width, t->height, g->attr[t->c->y][t->c->x].mode & CELL_WIDE);
+                render_cursor(r, t->c, wt->cw, wt->ch, wt->width, wt->height, g->attr[t->c->y][t->c->x].mode & CELL_WIDE);
 
         /* Render the quads. */
         glUniform1i(r->uniform_is_solid, 1);

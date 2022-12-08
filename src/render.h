@@ -7,7 +7,7 @@
 #include "util.h"
 #include "sprite.h"
 
-struct term;
+struct wterm;
 
 struct font_renderer {
         /* Pointer to the global font manager. */
@@ -58,6 +58,6 @@ struct font_renderer {
 };
 
 int render_init(struct font_renderer *r, struct font_manager *m, struct color *color256);
-void render_term(struct font_renderer *r, struct term *f, int font_size);
+void render_wterm(struct font_renderer *r, struct wterm *wt);
 void render_load_fonts(struct font_renderer *r);
 void render_quad(struct font_renderer *r, int x0, int y0, int x1, int y1, GLuint tex);
