@@ -28,6 +28,7 @@ struct subprocess {
          */
         void *fluff;
         int (*write)(void *, char *, int);
+        void (*end)(void *);
 };
 
 static void *read_shell(void *arg)
@@ -42,6 +43,8 @@ static void *read_shell(void *arg)
                 int written = p->write(p->fluff, buf, ret);
                 if (written < 0) break;
         }
+
+        p->end(p->fluff);
 
         return NULL;
 }
@@ -113,11 +116,14 @@ int platform_write(struct subprocess *p, const char *buf, int n)
         return write(p->master, buf, n);
 }
 
-struct subprocess *platform_spawn_shell(void *fluff, int (*callback)(void *, char *, int))
+struct subprocess *platform_spawn_shell(void *fluff,
+                                        int (*callback)(void *, char *, int),
+                                        void (*end)(void *))
 {
         struct subprocess *subprocess = malloc(sizeof *subprocess);
         subprocess->master = spawn_shell(getenv("SHELL"));
         subprocess->write = callback;
+        subprocess->end = end;
         subprocess->fluff = fluff;
         pthread_create(&subprocess->thread, NULL, read_shell, subprocess);
         return subprocess;

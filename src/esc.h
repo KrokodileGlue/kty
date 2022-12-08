@@ -9,7 +9,7 @@ struct csi {
         char buf[2048];
         unsigned len;
 
-        long arg[512];
+        long arg[ESC_ARG_SIZE];
         int narg;
 
         bool priv;
@@ -22,7 +22,7 @@ struct stresc {
         char buf[2048];
         unsigned len;
 
-        char *arg[512];
+        char *arg[ESC_ARG_SIZE];
         int narg;
 
         char type;

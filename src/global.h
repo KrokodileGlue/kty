@@ -22,5 +22,4 @@ struct global {
 };
 
 int global_init(struct global *k);
-int global_notify_title_change(struct term *f);
 int global_render(struct global *k);

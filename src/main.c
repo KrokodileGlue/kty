@@ -331,7 +331,7 @@ int main(int argc, char **argv)
 
         glfwSwapBuffers(window);
 
-        while (!glfwWindowShouldClose(window)) {
+        while (!glfwWindowShouldClose(window) && k->focus) {
                 global_render(k);
                 glfwSwapBuffers(window);
                 glfwPollEvents();

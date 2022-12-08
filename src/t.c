@@ -589,8 +589,7 @@ void tstrhandle(struct term *t)
                 _printf("\e[34mTODO: PM - Privacy message\e[39m\n");
                 break;
         case 'k':
-                /* TODO */
-                /* term_title(t, t->stresc.arg[0]); */
+                /* TODO: Call a callback to set the wterm title */
                 break;
         default:
                 _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", t->stresc.type);
@@ -676,7 +675,7 @@ void tdeletechar(struct term *t, int n)
 void tputc(struct term *t, uint32_t c)
 {
         if (IS_STRING_ESCAPE_SEQUENCE_TERMINATOR(c)) {
-                t->esc &= ~(ESC_START|ESC_STR);
+                t->esc &= ~(ESC_START | ESC_STR);
                 t->esc |= ESC_STR_END;
         }
 

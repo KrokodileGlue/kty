@@ -24,7 +24,7 @@ void window_title_callback(char *title)
 static void append_wterm(struct window *w, struct wterm *wterm)
 {
         struct wterm **head = &w->wterm;
-        while (*head) head = &(*head)->next;
+        while (*head) wterm->prev = *head, head = &(*head)->next;
         *head = wterm;
         w->nterm++;
 }
@@ -85,23 +85,47 @@ void window_change_font_size(struct wterm *wt, int delta)
                                              wt->term->g->row);
 }
 
+static void remove_wterm(struct window *w, struct wterm *wt)
+{
+        if (wt->prev) {
+                wt->prev->next = wt->next;
+                if (wt->next) wt->next->prev = wt->prev;
+        }
+        else {
+                w->wterm = wt->next;
+                if (wt->next) wt->next->prev = NULL;
+        }
+        w->nterm--;
+}
+
+static void end_shell(void *arg)
+{
+        struct wterm *wt = (struct wterm *)arg;
+        struct window *w = wt->window;
+        remove_wterm(w, wt);
+        if (k->focus == wt)
+                k->focus = w->wterm;
+        window_place(w, w->x0, w->y0, w->x1, w->y1);
+}
+
 void window_spawn(struct window *w)
 {
         struct wterm *wt = calloc(1, sizeof *wt); /* TODO: xmalloc */
 
         *wt = (struct wterm){
-                .term = term_new(),
+                .term = malloc(sizeof *wt->term),
                 .font_size = 12, /* TODO: Configure default font size */
                 .window = w,
         };
 
+        term_init(wt->term);
         append_wterm(w, wt);
 
         window_set_wterm_dimensions(wt);
         wterm_change_font_size(wt, 0);
         init_gl_resources(wt, wt->width, wt->height);
 
-        wt->subprocess = platform_spawn_shell(wt, read_shell);
+        wt->subprocess = platform_spawn_shell(wt, read_shell, end_shell);
         window_place(w, w->x0, w->y0, w->x1, w->y1);
 }
 
@@ -138,16 +162,12 @@ void window_place(struct window *w, int x0, int y0, int x1, int y1)
                 }
         } else {
                 for (struct wterm *wt = w->wterm; wt; wt = wt->next) {
-                        struct term *t = wt->term;
-
                         window_set_wterm_dimensions(wt);
-                        term_resize(t, wt->width / wt->cw, wt->height / (wt->ch + LINE_SPACING));
-                        platform_inform_subprocess_of_resize(wt->subprocess, t->g->col, t->g->row);
-
-                        /* TODO: Move this somewhere sensible. */
-                        glBindTexture(GL_TEXTURE_2D, wt->tex_color_buffer);
-                        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wt->width, wt->height, 0,
-                                     GL_RGB, GL_UNSIGNED_BYTE, NULL);
+                        term_resize(wt->term, wt->width / wt->cw,
+                                    wt->height / (wt->ch + LINE_SPACING));
+                        platform_inform_subprocess_of_resize(wt->subprocess,
+                                                             wt->term->g->col,
+                                                             wt->term->g->row);
                 }
         }
 }
@@ -174,9 +194,9 @@ void window_render(struct window *w, struct font_renderer *r)
                 } else {
                         render_quad(r,
                                     w->x0,
-                                    w->y0 + i * wt->height + i,
+                                    w->y0 + (w->nterm - i - 1) * wt->height - i,
                                     w->x1,
-                                    w->y0 + (i + 1) * wt->height + i,
+                                    w->y0 + (w->nterm - i) * wt->height - i,
                                     wt->tex_color_buffer);
                 }
         }

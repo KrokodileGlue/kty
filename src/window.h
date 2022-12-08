@@ -26,7 +26,7 @@ struct window {
                 struct term *term;
 
                 struct window *window;
-                struct wterm *next;
+                struct wterm *prev, *next;
         } *wterm;
 
         enum {

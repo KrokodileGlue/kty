@@ -1,24 +1,4 @@
-#define _XOPEN_SOURCE 600
-
 #include "global.h"
-
-#include <GL/glew.h>            /* GLfloat, glTexParameteri, GL_ARRAY_BU... */
-#include <freetype/freetype.h>  /* FT_GlyphSlotRec_, FT_FaceRec_, FT_Gly... */
-#include <freetype/ftimage.h>   /* FT_Bitmap */
-#include <freetype/fttypes.h>   /* FT_MAKE_TAG */
-#include <freetype/tttables.h>  /* FT_Load_Sfnt_Table */
-#include <inttypes.h>           /* uint32_t */
-#include <stdio.h>              /* fprintf, stderr, NULL */
-#include <stdlib.h>             /* calloc, abs */
-#include <string.h>             /* memcpy */
-#include <wchar.h>              /* wcwidth */
-#include "font.h"               /* font, cell, CELL_DUMMY, CELL_INVERSE */
-#include "term.h"               /* term, window, term_new, cursor, MOD... */
-#include "render.h"             /* font_renderer */
-#include "sprite.h"             /* sprite */
-#include "util.h"               /* color, LINE_SPACING, NUM_CELL, FONT_... */
-#include "utf8.h"
-#include "render.h"
 
 static struct color color256[256] = {
         { 0.003922, 0.094118, 0.156863 }, /*   0 - #011828 */
@@ -287,15 +267,6 @@ int global_init(struct global *k)
         render_init(&k->font, &k->m, k->color256);
         window_init(&k->window);
 
-        return 0;
-}
-
-int global_notify_title_change(struct term *f)
-{
-        /* struct global *k = f->k; */
-        /* if (f == k->focus) */
-        /*         k->window_title_callback(f->title); */
-        (void)f;
         return 0;
 }
 

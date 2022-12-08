@@ -411,10 +411,16 @@ void render_wterm(struct font_renderer *r, struct wterm *wt)
         struct term *t = wt->term;
         struct grid *g = t->g;
 
+        /* TODO: Move this somewhere sensible. */
+        glBindTexture(GL_TEXTURE_2D, wt->tex_color_buffer);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, wt->width,
+                     wt->height, 0, GL_RGB, GL_UNSIGNED_BYTE,
+                     NULL);
+
+        /* TODO: Clean up the framebuffer. */
         glBindFramebuffer(GL_FRAMEBUFFER, wt->framebuffer);
         glViewport(0, 0, wt->width, wt->height);
         glUseProgram(r->program);
-        /* TODO: Clean up the framebuffer. */
 
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);

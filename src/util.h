@@ -12,6 +12,9 @@
 #define MAX_SPRITES_IN_FONT 1000
 #define LINE_SPACING 4
 
+/* How long could an escape sequence possibly be. */
+#define ESC_ARG_SIZE 512
+
 #define VT_IDENTITY "\033[?6c"
 
 struct color {

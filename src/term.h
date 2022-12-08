@@ -74,10 +74,8 @@ struct term {
         struct grid *g;
 
         int mode;
-
-        char *title;
 };
 
-struct term *term_new();
+void term_init(struct term *t);
 void term_title(struct term *f, const char *title);
 void term_resize(struct term *t, int col, int row);
