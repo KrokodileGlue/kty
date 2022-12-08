@@ -3,6 +3,9 @@
 #include <limits.h>  /* LONG_MAX, LONG_MIN */
 #include <stdlib.h>  /* strtol */
 
+#include <stdio.h>   /* snprintf */
+#include <string.h>  /* strlen */
+
 void csiparse(struct csi *csi)
 {
         csi->narg = 0;

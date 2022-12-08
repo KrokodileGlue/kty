@@ -801,32 +801,37 @@ void tsetattr(struct term *t)
                 return;
         }
 
-        if (t->csi->narg == 5 && t->csi->arg[0] == 38 && t->csi->arg[1] == 2) {
-                /* This is a truecolor fg sequence. */
-                t->c->fg = TRUECOLOR(t->csi->arg[2], t->csi->arg[3], t->csi->arg[4]);
-                return;
-        }
+        for (int i = 0; i < t->csi->narg; i++) {
+                if (t->csi->narg - i >= 5 && t->csi->arg[i] == 38 && t->csi->arg[i + 1] == 2) {
+                        /* This is a truecolor fg sequence. */
+                        t->c->fg = TRUECOLOR(t->csi->arg[i + 2], t->csi->arg[i + 3], t->csi->arg[i + 4]);
+                        i += 4;
+                        return;
+                }
 
-        if (t->csi->narg == 5 && t->csi->arg[0] == 48 && t->csi->arg[1] == 2) {
-                /* This is a truecolor bg sequence. */
-                t->c->bg = TRUECOLOR(t->csi->arg[2], t->csi->arg[3], t->csi->arg[4]);
-                return;
-        }
+                if (t->csi->narg - i >= 5 && t->csi->arg[i] == 48 && t->csi->arg[i + 1] == 2) {
+                        /* This is a truecolor bg sequence. */
+                        t->c->bg = TRUECOLOR(t->csi->arg[i + 2], t->csi->arg[i + 3], t->csi->arg[i + 4]);
+                        i += 4;
+                        return;
+                }
 
-        if (t->csi->narg == 3 && t->csi->arg[0] == 38 && t->csi->arg[1] == 5) {
-                /* This is a 256 fg sequence. */
-                t->c->fg = t->csi->arg[2];
-                return;
-        }
+                if (t->csi->narg - i >= 3 && t->csi->arg[i] == 38 && t->csi->arg[i + 1] == 5) {
+                        /* This is a 256 fg sequence. */
+                        t->c->fg = t->csi->arg[i + 2];
+                        i += 2;
+                        return;
+                }
 
-        if (t->csi->narg == 3 && t->csi->arg[0] == 48 && t->csi->arg[1] == 5) {
-                /* This is a 256 bg sequence. */
-                t->c->bg = t->csi->arg[2];
-                return;
-        }
+                if (t->csi->narg - i >= 3 && t->csi->arg[i] == 48 && t->csi->arg[i + 1] == 5) {
+                        /* This is a 256 bg sequence. */
+                        t->c->bg = t->csi->arg[i + 2];
+                        i += 2;
+                        return;
+                }
 
-        for (int i = 0; i < t->csi->narg; i++)
                 thandlegraphicmode(t, t->csi->arg[i]);
+        }
 }
 
 void tstrsequence(struct term *t, unsigned char c)
