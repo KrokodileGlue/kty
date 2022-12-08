@@ -552,44 +552,25 @@ void tnewline(struct term *t, int first_col)
         tmoveto(t, first_col ? 0 : t->c->x, y);
 }
 
-void tstrparse(struct term *t)
-{
-        struct grid *g = t->g;
-        g->stresc.narg = 0;
-        g->stresc.buf[g->stresc.len] = 0;
-
-        char *p = g->stresc.buf;
-
-        if (!*p) return;
-
-        while (g->stresc.narg < ESC_ARG_SIZE) {
-                g->stresc.arg[g->stresc.narg++] = p;
-                int c;
-                while ((c = *p) && c != ';') ++p;
-                if (!c) return;
-                *p++ = 0;
-        }
-}
-
 /*
  * Parse and execute string escape sequences.
  */
 void tstrhandle(struct term *t)
 {
         struct grid *g = t->g;
-        _printf("\e[33m%.*s\e[39m\n", g->stresc.len, g->stresc.buf);
+        _printf("\e[33m%.*s\e[39m\n", t->stresc->len, t->stresc->buf);
 
-        tstrparse(t);
+        strescparse(t->stresc);
 
-        int par = g->stresc.narg ? atoi(g->stresc.arg[0]) : 0;
+        int par = t->stresc->narg ? atoi(t->stresc->arg[0]) : 0;
 
-        switch (g->stresc.type) {
+        switch (t->stresc->type) {
         case ']':
                 switch (par) {
                 case 0:
                         /* TODO */
-                        /* if (g->stresc.narg > 1) */
-                        /*         term_title(t, g->stresc.arg[1]); */
+                        /* if (t->stresc->narg > 1) */
+                        /*         term_title(t, t->stresc->arg[1]); */
                         break;
                 default:
                         _printf("\e[34mUnhandled `]` style string escape sequence\e[39m\n");
@@ -607,15 +588,15 @@ void tstrhandle(struct term *t)
                 break;
         case 'k':
                 /* TODO */
-                /* term_title(t, g->stresc.arg[0]); */
+                /* term_title(t, t->stresc->arg[0]); */
                 break;
         default:
-                _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", g->stresc.type);
+                _printf("\e[34mUnhandled string escape sequence with type `%c`\e[39m\n", t->stresc->type);
                 break;
         }
 
-        g->stresc.len = 0;
-        g->stresc.type = 0;
+        t->stresc->len = 0;
+        t->stresc->type = 0;
         g->esc &= ~(ESC_STR | ESC_STR_END);
 }
 
@@ -626,7 +607,7 @@ void tcontrolcode(struct term *t, uint32_t c)
 
         switch (c) {
         case ESC:
-                resetcsi(&g->csi);
+                resetcsi(t->csi);
                 g->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
                 g->esc |= ESC_START;
                 break;
@@ -690,11 +671,11 @@ void tputc(struct term *t, uint32_t c)
 
                 /* TODO: Handle unending string escape sequences. */
 
-                unsigned len;
+                unsigned len = 0;
                 unsigned char buf[4];
                 utf8encode(c, buf, &len);
-                memmove(&g->stresc.buf[g->stresc.len], buf, len);
-                g->stresc.len += len;
+                memmove(&t->stresc->buf[t->stresc->len], buf, len);
+                t->stresc->len += len;
                 return;
         }
 
@@ -703,18 +684,18 @@ void tputc(struct term *t, uint32_t c)
                 tcontrolcode(t, c);
         } else if (g->esc & ESC_START) {
                 if (g->esc & ESC_CSI) {
-                        g->csi.buf[g->csi.len++] = c;
+                        t->csi->buf[t->csi->len++] = c;
                         if ((c >= 0x40 && c <= 0x7E)
-                                || g->csi.len >= sizeof(g->csi.buf) - 1) {
+                                || t->csi->len >= sizeof(t->csi->buf) - 1) {
                                 g->esc = 0;
 
                                 /*
                                  * So now we have an entire escape sequence in
                                  * `g->esc_buf`, just parse it and execute it.
                                  */
-                                csiparse(&g->csi);
-                                tcsihandle(t, &g->csi);
-                                resetcsi(&g->csi);
+                                csiparse(t->csi);
+                                tcsihandle(t, t->csi);
+                                resetcsi(t->csi);
                                 tresetesc(t);
                         }
                         return;
@@ -815,38 +796,37 @@ void tswapscreen(struct term *t)
 
 void tsetattr(struct term *t)
 {
-        struct grid *g = t->g;
-        if (!g->csi.narg) {
+        if (!t->csi->narg) {
                 thandlegraphicmode(t, 0);
                 return;
         }
 
-        if (g->csi.narg == 5 && g->csi.arg[0] == 38 && g->csi.arg[1] == 2) {
+        if (t->csi->narg == 5 && t->csi->arg[0] == 38 && t->csi->arg[1] == 2) {
                 /* This is a truecolor fg sequence. */
-                t->c->fg = TRUECOLOR(g->csi.arg[2], g->csi.arg[3], g->csi.arg[4]);
+                t->c->fg = TRUECOLOR(t->csi->arg[2], t->csi->arg[3], t->csi->arg[4]);
                 return;
         }
 
-        if (g->csi.narg == 5 && g->csi.arg[0] == 48 && g->csi.arg[1] == 2) {
+        if (t->csi->narg == 5 && t->csi->arg[0] == 48 && t->csi->arg[1] == 2) {
                 /* This is a truecolor bg sequence. */
-                t->c->bg = TRUECOLOR(g->csi.arg[2], g->csi.arg[3], g->csi.arg[4]);
+                t->c->bg = TRUECOLOR(t->csi->arg[2], t->csi->arg[3], t->csi->arg[4]);
                 return;
         }
 
-        if (g->csi.narg == 3 && g->csi.arg[0] == 38 && g->csi.arg[1] == 5) {
+        if (t->csi->narg == 3 && t->csi->arg[0] == 38 && t->csi->arg[1] == 5) {
                 /* This is a 256 fg sequence. */
-                t->c->fg = g->csi.arg[2];
+                t->c->fg = t->csi->arg[2];
                 return;
         }
 
-        if (g->csi.narg == 3 && g->csi.arg[0] == 48 && g->csi.arg[1] == 5) {
+        if (t->csi->narg == 3 && t->csi->arg[0] == 48 && t->csi->arg[1] == 5) {
                 /* This is a 256 bg sequence. */
-                t->c->bg = g->csi.arg[2];
+                t->c->bg = t->csi->arg[2];
                 return;
         }
 
-        for (int i = 0; i < g->csi.narg; i++)
-                thandlegraphicmode(t, g->csi.arg[i]);
+        for (int i = 0; i < t->csi->narg; i++)
+                thandlegraphicmode(t, t->csi->arg[i]);
 }
 
 void tstrsequence(struct term *t, unsigned char c)
@@ -867,7 +847,7 @@ void tstrsequence(struct term *t, unsigned char c)
                 break;
         }
 
-        g->stresc.type = c;
+        t->stresc->type = c;
         g->esc |= ESC_STR;
 }
 
@@ -893,7 +873,7 @@ void handle_terminal_mode(struct term *t, int set, bool priv)
         int mode = 0;
 
         if (priv) {
-                switch (t->g->csi.arg[0]) {
+                switch (t->csi->arg[0]) {
                 case 1:                 /* DECCKM - Cursor key */
                         mode |= MODE_APPCURSOR;
                         break;
@@ -909,7 +889,7 @@ void handle_terminal_mode(struct term *t, int set, bool priv)
                                 tclearregion(t, 0, 0, t->g->col - 1, t->g->row - 1);
                         if (set ^ !!(t->mode & MODE_ALTSCREEN))
                                 tswapscreen(t);
-                        if (t->g->csi.arg[0] != 1049)
+                        if (t->csi->arg[0] != 1049)
                                 break;
                         /* FALLTHROUGH */
                 case 1048:
@@ -925,7 +905,7 @@ void handle_terminal_mode(struct term *t, int set, bool priv)
         else t->mode &= ~mode;
 }
 
-#define CSIDEFAULT(x,y) (g->csi.narg ? (x) : (y))
+#define CSIDEFAULT(x,y) (t->csi->narg ? (x) : (y))
 
 void tcsihandle(struct term *t, struct csi *csi)
 {

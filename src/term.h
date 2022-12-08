@@ -7,7 +7,6 @@
 
 #include "util.h"
 #include "sprite.h"
-#include "esc.h"
 
 struct cursor {
         int x, y, mode, state;
@@ -60,10 +59,10 @@ struct term {
 
                 int esc;        /* Escape state */
                 int charset;
-
-                struct csi csi;
-                struct stresc stresc;
         } grid[2];
+
+        struct csi *csi;
+        struct stresc *stresc;
 
         /*
          * There are two grids: the primary grid and the alternate

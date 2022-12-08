@@ -1,16 +1,7 @@
 #include "esc.h"
 
 #include <limits.h>  /* LONG_MAX, LONG_MIN */
-#include <stdint.h>  /* uint32_t */
-#include <stdio.h>   /* NULL */
 #include <stdlib.h>  /* strtol */
-#include <string.h>  /* memset */
-#include <unistd.h>
-
-#include "term.h"    /* term, term::(anonymous), cursor, ESC_ALTCHARSET */
-#include "render.h"  /* font_renderer */
-#include "t.h"       /* tclearregion, tmoveto, tscrolldown, tsetscroll */
-#include "util.h"    /* _printf, ESC_ARG_SIZE */
 
 void csiparse(struct csi *csi)
 {
@@ -25,7 +16,7 @@ void csiparse(struct csi *csi)
         }
 
         while (p < csi->buf + csi->len) {
-                char *np = NULL;
+                char *np = 0;
                 long v = strtol(p, &np, 10);
                 if (np == p) break;
                 if (v == LONG_MAX || v == LONG_MIN) v = -1;
@@ -56,5 +47,23 @@ void csiparse(struct csi *csi)
 
 void resetcsi(struct csi *csi)
 {
-        memset(csi, 0, sizeof *csi);
+        *csi = (struct csi){ 0 };
+}
+
+void strescparse(struct stresc *stresc)
+{
+        stresc->narg = 0;
+        stresc->buf[stresc->len] = 0;
+
+        char *p = stresc->buf;
+
+        if (!*p) return;
+
+        while (stresc->narg < ESC_ARG_SIZE) {
+                stresc->arg[stresc->narg++] = p;
+                int c;
+                while ((c = *p) && c != ';') ++p;
+                if (!c) return;
+                *p++ = 0;
+        }
 }

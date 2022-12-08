@@ -25,6 +25,8 @@ static inline unsigned utf8decode(const char *s, unsigned l, uint32_t *c)
 
 static inline int utf8encode(uint32_t c, uint8_t *buf, unsigned *len)
 {
+        /* TODO(speed): Make these branches more predictable. */
+
         if (c <= 0x7F) {
                 *len = 1;
                 buf[0] = c & 0xFF;

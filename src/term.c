@@ -6,6 +6,7 @@
 #include "global.h"                    /* global_notify_title_change */
 #include "t.h"
 #include "platform.h"
+#include "esc.h"
 
 extern struct global *k;
 
@@ -26,6 +27,9 @@ struct term *term_new(int width, int height)
 
         t->width = width;
         t->height = height;
+
+        t->csi = calloc(1, sizeof *t->csi);
+        t->stresc = calloc(1, sizeof *t->stresc);
 
         /* TODO: None of this should be here. */
         glGenFramebuffers(1, &t->framebuffer);
