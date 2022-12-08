@@ -46,11 +46,8 @@ void csiparse(struct csi *csi)
         snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "mode %c mode %d\n", csi->mode[0], csi->mode[1]);
         _printf("%s", buf);
 #endif
-}
 
-void resetcsi(struct csi *csi)
-{
-        *csi = (struct csi){ 0 };
+        csi->len = 0;
 }
 
 void strescparse(struct stresc *stresc)
@@ -69,4 +66,6 @@ void strescparse(struct stresc *stresc)
                 if (!c) return;
                 *p++ = 0;
         }
+
+        stresc->len = 0;
 }

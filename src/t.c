@@ -10,13 +10,17 @@
 #include <wchar.h>                     /* wcwidth */
 #include <unistd.h>
 
-#include "esc.h"                       /* resetcsi, resetesc, csihandle */
+#include "esc.h"
 #include "font.h"                      /* cell, CELL_BOLD, CELL_DUMMY */
 #include "term.h"                      /* term, cursor, term::(anonymous) */
 #include "render.h"                    /* font_renderer */
 #include "utf8.h"                      /* utf8decode, utf8encode */
 #include "util.h"                      /* _printf, ESC_ARG_SIZE, ISCONTROL */
 #include "platform.h"
+
+#define ISCONTROLC0(c) ((0 < c && c < 0x1f) || (c) == 0x7f)
+#define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
+#define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
 
 void tswapscreen(struct term *t);
 int twrite(struct term *t, const char *buf, int buflen);
@@ -40,7 +44,6 @@ void tcursor(struct term *t, int save);
 void tcsihandle(struct term *t, struct csi *csi);
 int teschandle(struct term *t, uint32_t c);
 void handle_gridinal_mode(struct term *t, int set, bool priv);
-void tresetesc(struct term *t);
 
 enum {
         BEL = 0x07,
@@ -557,7 +560,6 @@ void tnewline(struct term *t, int first_col)
  */
 void tstrhandle(struct term *t)
 {
-        struct grid *g = t->g;
         _printf("\e[33m%.*s\e[39m\n", t->stresc->len, t->stresc->buf);
 
         strescparse(t->stresc);
@@ -597,19 +599,17 @@ void tstrhandle(struct term *t)
 
         t->stresc->len = 0;
         t->stresc->type = 0;
-        g->esc &= ~(ESC_STR | ESC_STR_END);
+        t->esc &= ~(ESC_STR | ESC_STR_END);
 }
 
 void tcontrolcode(struct term *t, uint32_t c)
 {
-        struct grid *g = t->g;
         _printf("\e[35m\\x%"PRIx32"\e[39m\n", c);
 
         switch (c) {
         case ESC:
-                resetcsi(t->csi);
-                g->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
-                g->esc |= ESC_START;
+                t->esc &= ~(ESC_CSI | ESC_ALTCHARSET);
+                t->esc |= ESC_START;
                 break;
         case LF:
         case VT:
@@ -625,7 +625,7 @@ void tcontrolcode(struct term *t, uint32_t c)
                 break;
         case BEL:
                 /* The bell sound is annoying anyway. */
-                if (g->esc & ESC_STR_END)
+                if (t->esc & ESC_STR_END)
                         tstrhandle(t);
                 break;
         case BS:
@@ -656,56 +656,65 @@ void tdeletechar(struct term *t, int n)
         tclearregion(t, g->col - n, t->c->y, g->col - 1, t->c->y);
 }
 
+/*
+ * The xterm way of ending a string escape sequence is to use the bell
+ * character.
+ */
+#define IS_STRING_ESCAPE_SEQUENCE_TERMINATOR(c) \
+        (c == '\a' || c == 030 || c == 032 || c == 033 || ISCONTROLC1(c))
+
+#define IS_CSI_ESCAPE_SEQUENCE_TERMINATOR(c) \
+        (c >= 0x40 && c <= 0x7E)
+
+/*
+ * This function is important; all input goes through it. Any change
+ * to the state of the terminal comes from this function interpreting
+ * a code point. If you think of the terminal emulator like a game
+ * console emulator then a code point is an opcode and this function
+ * executes opcodes.
+ */
 void tputc(struct term *t, uint32_t c)
 {
-        /* Here's the legwork of actually interpreting commands. */
-        struct grid *g = t->g;
+        if (IS_STRING_ESCAPE_SEQUENCE_TERMINATOR(c)) {
+                t->esc &= ~(ESC_START|ESC_STR);
+                t->esc |= ESC_STR_END;
+        }
 
-        if (g->esc & ESC_STR) {
-                if (c == '\a' || c == 030 || c == 032 || c == 033
-                        || ISCONTROLC1(c)) {
-                        g->esc &= ~(ESC_START|ESC_STR);
-                        g->esc |= ESC_STR_END;
-                        goto check_control_code;
-                }
-
-                /* TODO: Handle unending string escape sequences. */
-
-                unsigned len = 0;
-                unsigned char buf[4];
-                utf8encode(c, buf, &len);
-                memmove(&t->stresc->buf[t->stresc->len], buf, len);
-                t->stresc->len += len;
+        if (t->esc & ESC_STR) {
+                t->stresc->buf[t->stresc->len++] = c;
                 return;
         }
 
- check_control_code:
         if (ISCONTROL(c)) {
                 tcontrolcode(t, c);
-        } else if (g->esc & ESC_START) {
-                if (g->esc & ESC_CSI) {
-                        t->csi->buf[t->csi->len++] = c;
-                        if ((c >= 0x40 && c <= 0x7E)
-                                || t->csi->len >= sizeof(t->csi->buf) - 1) {
-                                g->esc = 0;
+                return;
+        }
 
+        if (t->esc & ESC_START) {
+                if (t->esc & ESC_CSI) {
+                        t->csi->buf[t->csi->len++] = c;
+
+                        if (IS_CSI_ESCAPE_SEQUENCE_TERMINATOR(c)
+                            || t->csi->len >= sizeof(t->csi->buf)) {
+                                t->esc = 0;
                                 /*
                                  * So now we have an entire escape sequence in
                                  * `g->esc_buf`, just parse it and execute it.
                                  */
                                 csiparse(t->csi);
                                 tcsihandle(t, t->csi);
-                                resetcsi(t->csi);
-                                tresetesc(t);
                         }
+
                         return;
-                } else if (g->esc & ESC_ALTCHARSET) {
+                } else if (t->esc & ESC_ALTCHARSET) {
                         _printf("TODO: Handle alternate charsets\n");
                 } else if (teschandle(t, c))
-                        tresetesc(t);
-        } else {
-                tprintc(t, c);
+                        t->esc = 0;
+
+                return;
         }
+
+        tprintc(t, c);
 }
 
 void thandlegraphicmode(struct term *t, long arg)
@@ -836,7 +845,6 @@ void tsetattr(struct term *t)
 
 void tstrsequence(struct term *t, unsigned char c)
 {
-        struct grid *g = t->g;
         switch (c) {
         case 0x90:              /* DCS - Device control string */
                 c = 'P';
@@ -853,7 +861,7 @@ void tstrsequence(struct term *t, unsigned char c)
         }
 
         t->stresc->type = c;
-        g->esc |= ESC_STR;
+        t->esc |= ESC_STR;
 }
 
 int twrite(struct term *t, const char *buf, int buflen)
@@ -861,7 +869,6 @@ int twrite(struct term *t, const char *buf, int buflen)
         int charsize, n;
 
         for (n = 0; n < buflen; n += charsize) {
-                /* TODO: Support commands which alter support for UTF-8. */
                 uint32_t c;
                 if (!(charsize = utf8decode(buf + n, buflen - n, &c))) break;
                 tputc(t, c);
@@ -1035,7 +1042,7 @@ int teschandle(struct term *t, uint32_t c)
         struct grid *g = t->g;
         switch (c) {
         case '[':
-                g->esc |= ESC_CSI;
+                t->esc |= ESC_CSI;
                 return 0;
         case 'P': /* DCS - Device Control String */
         case '_': /* APC - Application Program Command */
@@ -1056,10 +1063,10 @@ int teschandle(struct term *t, uint32_t c)
         case '*': /* G2D4 - Set tertiary charset G2 */
         case '+': /* G3D4 - Set quaternary charset G3 */
                 g->charset = c - '(';
-                g->esc |= ESC_ALTCHARSET;
+                t->esc |= ESC_ALTCHARSET;
                 return 0;
         case '\\': /* ST - String terminator */
-                if (g->esc & ESC_STR_END)
+                if (t->esc & ESC_STR_END)
                         tstrhandle(t);
                 break;
         default:
@@ -1067,10 +1074,4 @@ int teschandle(struct term *t, uint32_t c)
         }
 
         return 1;
-}
-
-void tresetesc(struct term *t)
-{
-        struct grid *g = t->g;
-        g->esc = 0;
 }

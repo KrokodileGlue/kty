@@ -9,8 +9,7 @@ extern struct global *k;
 static int read_shell(void *arg, char *buf, int n)
 {
         struct wterm *wt = (struct wterm *)arg;
-        twrite(wt->term, buf, n);
-        return n;
+        return twrite(wt->term, buf, n);
 }
 
 void window_title_callback(char *title)

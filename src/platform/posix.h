@@ -12,27 +12,35 @@ extern char **environ;
 
 struct subprocess {
         int master;
+
+        /*
+         * Each shell forks off into a different process and we spawn
+         * a thread which just waits for it to say something. Then it
+         * repeats whatever the shell said to the terminal by calling
+         * the `write` callback.
+         */
         pthread_t thread;
+
+        /*
+         * `write` is a callback which is called whenever the shell
+         * wants to say something to the terminal. `fluff` is the
+         * terminal being written to (well, the wterm).
+         */
         void *fluff;
         int (*write)(void *, char *, int);
 };
 
-/* TODO: Move this into platform. */
 static void *read_shell(void *arg)
 {
         struct subprocess *p = (struct subprocess *)arg;
 
         char buf[BUFSIZ];
-        int buflen = 0;
 
         while (1) {
-                int ret = read(p->master, buf + buflen, sizeof buf / sizeof *buf - buflen);
+                int ret = read(p->master, buf, sizeof buf);
                 if (ret <= 0) break;
-                buflen += ret;
-                int written = p->write(p->fluff, buf, buflen);
-                buflen -= written;
-                if (buflen > 0)
-                        memmove(buf, buf + written, buflen);
+                int written = p->write(p->fluff, buf, ret);
+                if (written < 0) break;
         }
 
         return NULL;

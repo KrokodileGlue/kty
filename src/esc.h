@@ -23,7 +23,5 @@ struct stresc {
         int narg;
 };
 
-
 void csiparse(struct csi *csi);
-void resetcsi(struct csi *csi);
 void strescparse(struct stresc *stresc);

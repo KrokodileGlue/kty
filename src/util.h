@@ -16,9 +16,6 @@
 #define ESC_ARG_SIZE 512
 
 #define VT_IDENTITY "\033[?6c"
-#define ISCONTROLC0(c) ((0 < c && c < 0x1f) || (c) == 0x7f)
-#define ISCONTROLC1(c) (0x80 < c && c < 0x9f)
-#define ISCONTROL(c) (ISCONTROLC0(c) || ISCONTROLC1(c))
 
 struct color {
         float r, g, b;

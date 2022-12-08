@@ -54,10 +54,10 @@ struct term {
                 int row, col;
                 int top, bot;
 
-                int esc;        /* Escape state */
                 int charset;
         } grid[2];
 
+        int esc;                /* Escape state */
         struct csi *csi;
         struct stresc *stresc;
 
