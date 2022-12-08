@@ -6,22 +6,11 @@
 
 extern struct global *k;
 
-/* TODO: Move this into platform. */
-void *read_shell(void *arg)
+static int read_shell(void *arg, char *buf, int n)
 {
         struct wterm *wt = (struct wterm *)arg;
-
-        while (1) {
-                int ret = platform_read(wt->subprocess, wt->buf + wt->buflen, sizeof wt->buf / sizeof *wt->buf - wt->buflen);
-                if (ret <= 0) break;
-                wt->buflen += ret;
-                int written = twrite(wt->term, wt->buf, wt->buflen);
-                wt->buflen -= written;
-                if (wt->buflen > 0)
-                        memmove(wt->buf, wt->buf + written, wt->buflen);
-        }
-
-        return NULL;
+        twrite(wt->term, buf, n);
+        return n;
 }
 
 void window_title_callback(char *title)
@@ -113,9 +102,8 @@ void window_spawn(struct window *w)
         wterm_change_font_size(wt, 0);
         init_gl_resources(wt, wt->width, wt->height);
 
-        wt->subprocess = platform_spawn_shell();
+        wt->subprocess = platform_spawn_shell(wt, read_shell);
         window_place(w, w->x0, w->y0, w->x1, w->y1);
-        pthread_create(&wt->thread, NULL, read_shell, wt);
 }
 
 void window_split(struct window *w)

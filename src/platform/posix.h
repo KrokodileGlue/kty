@@ -1,16 +1,42 @@
 #define _XOPEN_SOURCE 600
 
 #include <stdlib.h>
+#include <string.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#include <pthread.h>
 
 extern char **environ;
 
 struct subprocess {
         int master;
+        pthread_t thread;
+        void *fluff;
+        int (*write)(void *, char *, int);
 };
+
+/* TODO: Move this into platform. */
+static void *read_shell(void *arg)
+{
+        struct subprocess *p = (struct subprocess *)arg;
+
+        char buf[BUFSIZ];
+        int buflen = 0;
+
+        while (1) {
+                int ret = read(p->master, buf + buflen, sizeof buf / sizeof *buf - buflen);
+                if (ret <= 0) break;
+                buflen += ret;
+                int written = p->write(p->fluff, buf, buflen);
+                buflen -= written;
+                if (buflen > 0)
+                        memmove(buf, buf + written, buflen);
+        }
+
+        return NULL;
+}
 
 static int spawn_shell(const char *shell)
 {
@@ -74,10 +100,18 @@ static int spawn_shell(const char *shell)
         return master;
 }
 
-struct subprocess *platform_spawn_shell(void)
+int platform_write(struct subprocess *p, const char *buf, int n)
+{
+        return write(p->master, buf, n);
+}
+
+struct subprocess *platform_spawn_shell(void *fluff, int (*callback)(void *, char *, int))
 {
         struct subprocess *subprocess = malloc(sizeof *subprocess);
         subprocess->master = spawn_shell(getenv("SHELL"));
+        subprocess->write = callback;
+        subprocess->fluff = fluff;
+        pthread_create(&subprocess->thread, NULL, read_shell, subprocess);
         return subprocess;
 }
 
@@ -85,16 +119,6 @@ void platform_close_shell(struct subprocess *p)
 {
         /* TODO */
         (void)p;
-}
-
-int platform_read(struct subprocess *p, char *buf, int n)
-{
-        return read(p->master, buf, n);
-}
-
-int platform_write(struct subprocess *p, char *buf, int n)
-{
-        return write(p->master, buf, n);
 }
 
 FILE *platform_open_config(void)

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <stdio.h>
-#include <pthread.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -14,7 +13,6 @@ struct font_renderer;
 
 struct window {
         struct wterm {
-                pthread_t thread; /* TODO: Move this into platform. */
                 struct subprocess *subprocess;
 
                 /* TODO: Make these opaque handles for a graphics API. */
@@ -24,10 +22,6 @@ struct window {
                 int cw, ch;
                 int width, height;
                 int font_size;
-
-                /* Input buffer */
-                char buf[BUFSIZ];
-                int buflen;
 
                 struct term *term;
 
