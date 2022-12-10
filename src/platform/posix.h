@@ -82,6 +82,8 @@ static int spawn_shell(const char *shell)
                 return -1;
         }
 
+        setenv("TERM", "xterm-256color", 1);
+
         if (fork()) {
                 close(slave);
         } else {
