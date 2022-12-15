@@ -10,7 +10,7 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-ft.h>
 
-#define FONT "FiraCode-Regular.ttf"
+#define FONT "FreeSerif.otf"
 #define FONT_SIZE 64
 
 #define MARGIN 0
@@ -19,10 +19,12 @@ int main(void)
 {
         hb_buffer_t *buf = hb_buffer_create();
 
-        hb_buffer_add_utf8(buf, "hi -> --> => === /=", -1, 0, -1);
-        hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
-        hb_buffer_set_language(buf, hb_language_from_string("en", -1));
-        hb_buffer_set_cluster_level(buf, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
+        char *string = "اربك تكست";
+        hb_buffer_add_utf8(buf, string, -1, 0, -1);
+        hb_buffer_set_direction(buf, HB_DIRECTION_RTL);
+        hb_buffer_set_script(buf, HB_SCRIPT_ARABIC);
+        hb_buffer_set_language(buf, hb_language_from_string("ar", -1));
+        /* hb_buffer_set_cluster_level(buf, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS); */
 
         FT_Library ft_library;
         FT_Face ft_face;
@@ -32,8 +34,6 @@ int main(void)
         if ((ft_error = FT_New_Face(ft_library, FONT, 0, &ft_face))) abort();
         if ((ft_error = FT_Set_Char_Size(ft_face, FONT_SIZE*64, FONT_SIZE*64, 0, 0))) abort();
 
-        hb_blob_t *blob = hb_blob_create_from_file("FiraCode-Regular.ttf");
-        hb_face_t *face = hb_face_create(blob, 0);
         hb_font_t *font = hb_ft_font_create(ft_face, NULL);
 
         hb_feature_t userfeatures[4];
@@ -120,6 +120,4 @@ int main(void)
 
         hb_buffer_destroy(buf);
         hb_font_destroy(font);
-        hb_face_destroy(face);
-        hb_blob_destroy(blob);
 }
