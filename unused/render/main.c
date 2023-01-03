@@ -16,6 +16,25 @@
  *                  render_line()
  */
 
+static void
+show_glyph(struct glyph_manager *gm, uint32_t c, int size)
+{
+        struct glyph *glyph = glyph_manager_generate_glyph(gm, (uint32_t []){ c }, 1, size);
+        if (!glyph) return;
+
+        printf("glyph %d: %d,%d\n", glyph->id, glyph->size.x, glyph->size.y);
+
+        struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(gm, glyph->glyph_sheet);
+
+        puts("Sprite sheet:");
+
+        printf("id: %d\n", sheet.id);
+        printf("width: %d\n", sheet.width);
+        printf("height: %d\n", sheet.height);
+        printf("data: %p\n", sheet.data);
+        printf("format: %s\n", (char *[]){ "alpha", "color" }[sheet.format]);
+}
+
 int main(void)
 {
         struct glyph_manager *gm = glyph_manager_create();
@@ -28,7 +47,7 @@ int main(void)
         char *pattern[] = {
                 "monospace",
                 "emoji",
-                "cjk",
+                "cjk mono",
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
@@ -37,35 +56,9 @@ int main(void)
                         return 1;
                 }
 
-        struct cpu_cell cell = {
-                .c = { 'o' },
-                .num_code_point = 1,
-                .fg = 1,
-                .bg = 0,
-        };
-
-        struct glyph *glyph = glyph_manager_generate_glyph(gm, &cell, 12);
-        if (!glyph) return 1;
-
-        puts("glyph:");
-
-        for (unsigned i = 0; i < 6; i++)
-                printf("%f %f\n", glyph->vertices[i].x, glyph->vertices[i].y);
-
-        struct cpu_cell cell2 = {
-                .c = { '|' },
-                .num_code_point = 1,
-                .fg = 1,
-                .bg = 0,
-        };
-
-        glyph = glyph_manager_generate_glyph(gm, &cell2, 12);
-        if (!glyph) return 1;
-
-        puts("glyph:");
-
-        for (unsigned i = 0; i < 6; i++)
-                printf("%f %f\n", glyph->vertices[i].x, glyph->vertices[i].y);
+        show_glyph(gm, 'o', 12);
+        show_glyph(gm, '|',12);
+        show_glyph(gm, 0x1f914, 12);
 
         /* if (glyph_manager_destroy(gm)) { */
         /*         perror("glyph_manager_destroy"); */

@@ -21,6 +21,7 @@
 #include "debug.h"
 #include "font_manager.h"
 #include "glyph_manager.h"
+#include "utf8.h"
 
 struct glyph_manager {
         struct font_manager *fm;
@@ -44,8 +45,12 @@ struct glyph_manager {
                 struct ivec2 cursor;
                 struct font *font;
 
+                bool is_full;
+
                 int max_height[2];
                 unsigned num_glyph;
+
+                int id;
         } **sprite_map;
 
         unsigned capacity_sprite_map;
@@ -92,7 +97,103 @@ glyph_manager_destroy(struct glyph_manager *m)
                 return 1;
         }
 
+        for (unsigned i = 0; i < m->num_sprite_map; i++)
+                cairo_surface_destroy(m->sprite_map[i]->cairo_surface);
+
         return 0;
+}
+
+/* static void */
+/* initialize_sprite_map(struct glyph_manager *m, */
+/*                       struct sprite_map *map, */
+/*                       struct font *font, */
+/*                       int font_size) */
+/* { */
+/*         map->font = font; */
+
+/* } */
+
+static struct sprite_map *
+new_sprite_map(struct glyph_manager *m,
+               struct font *font,
+               int id)
+{
+        struct sprite_map *map = calloc(1, sizeof *map);
+
+        cairo_format_t format = font_manager_is_font_color(font) ?
+                CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_A8;
+
+        /*
+         * TODO: Set the width and height smartly. Perhaps the
+         * texture size can be configured for the glyph
+         * manager so that the renderer can query OpenGL for
+         * the maximum texture size and set that on the glyph
+         * manager.
+         */
+        int width = 1028, height = 1028;
+
+        *map = (struct sprite_map){
+                .id = id,
+                .width = width,
+                .height = height,
+                .font = font,
+                .cairo_format = format,
+                .cairo_surface = cairo_image_surface_create(format,
+                                                            width,
+                                                            height),
+        };
+
+        return map;
+}
+
+static struct sprite_map *
+add_sprite_map(struct glyph_manager *m,
+               struct font *font)
+{
+        if (!m->sprite_map) {
+                m->capacity_sprite_map = 1;
+                m->sprite_map = calloc(1, sizeof *m->sprite_map);
+                int id = m->num_sprite_map++;
+                return m->sprite_map[id] = new_sprite_map(m, font, id);
+        }
+
+        if (m->num_sprite_map == m->capacity_sprite_map) {
+                m->capacity_sprite_map *= 2;
+                m->sprite_map = realloc(m->sprite_map, m->capacity_sprite_map * sizeof *m->sprite_map);
+                int id = m->num_sprite_map++;
+                return m->sprite_map[id] = new_sprite_map(m, font, id);
+        }
+
+        int id = m->num_sprite_map++;
+        return m->sprite_map[id] = new_sprite_map(m, font, id);
+}
+
+static struct sprite_map *
+get_first_unfilled_sprite_map(struct glyph_manager *m,
+                              struct font *font)
+{
+        for (unsigned i = 0; i < m->num_sprite_map; i++)
+                if (m->sprite_map[i]->font == font
+                    && !m->sprite_map[i]->is_full)
+                        return m->sprite_map[i];
+
+        return add_sprite_map(m, font);
+}
+
+static void
+add_sprite_to_font(struct glyph_manager *m,
+                   struct font *font,
+                   struct glyph *glyph)
+{
+        /*
+         * First look for an unfilled sprite sheet and try to insert
+         * the sprite into it. If that fails, mark that sheet as full
+         * and allocate a new sprite sheet for the font and add it to
+         * that. That should never fail.
+         */
+
+        struct sprite_map *map = get_first_unfilled_sprite_map(m, font);
+        glyph->glyph_sheet = map->id;
 }
 
 /*
@@ -101,14 +202,13 @@ glyph_manager_destroy(struct glyph_manager *m)
  * Returns NULL if no glyph could be found for the given cpu cell.
  */
 static struct glyph *
-look_up_glyph(struct glyph_manager *m, struct cpu_cell *c)
+look_up_glyph(struct glyph_manager *m, uint32_t *text, unsigned len)
 {
         /* TODO: Use a hash for this lookup. */
         for (unsigned i = 0; i < m->num_glyph; i++) {
-                if (m->glyph[i].num_code_point != c->num_code_point)
+                if (m->glyph[i].num_code_point != len)
                         continue;
-                if (memcmp(m->glyph[i].c, c->c,
-                           c->num_code_point * sizeof *c->c))
+                if (memcmp(m->glyph[i].c, text, len * sizeof *text))
                         continue;
                 return m->glyph + i;
         }
@@ -124,10 +224,11 @@ look_up_glyph(struct glyph_manager *m, struct cpu_cell *c)
  */
 struct glyph *
 glyph_manager_generate_glyph(struct glyph_manager *m,
-                             struct cpu_cell *c,
+                             uint32_t *text,
+                             unsigned len,
                              int font_size)
 {
-        struct glyph *glyph = look_up_glyph(m, c);
+        struct glyph *glyph = look_up_glyph(m, text, len);
 
         /* If the glyph already exists then we can just return it. */
         if (glyph) return glyph;
@@ -156,7 +257,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
          * first character in the sequence and use it for shaping the
          * entire sequence.
          */
-        struct font *font = font_manager_get_font(m->fm, c->c[0], font_size);
+        struct font *font = font_manager_get_font(m->fm, text[0], font_size);
 
         assert(font);
 
@@ -165,11 +266,14 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
 
         assert(hb_font);
 
-        print("Picking font %s for U+%"PRIX32" (%c)\n", font_name, c->c[0], c->c[0]);
+        uint8_t tmpbuf[10];
+        unsigned tmpbuflen;
+        utf8encode(text[0], tmpbuf, &tmpbuflen);
+        print("Picking font %s for U+%"PRIX32" (%.*s)\n", font_name, text[0], tmpbuflen, (char *)tmpbuf);
 
         hb_buffer_t *buf = hb_buffer_create();
 
-        hb_buffer_add_codepoints(buf, c->c, c->num_code_point, 0, -1);
+        hb_buffer_add_utf32(buf, text, len, 0, -1);
         hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
         hb_buffer_set_language(buf, hb_language_from_string("en", -1));
 
@@ -207,7 +311,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         print("size: %d,%d / bearing: %d,%d\n", size.x, size.y,
               bearing.x, bearing.y);
 
-        struct vec2 vertices[6] = {
+        struct ivec2 vertices[6] = {
                 { bearing.x,          bearing.y },
                 { bearing.x + size.x, bearing.y },
                 { bearing.x,          bearing.y + size.y },
@@ -219,6 +323,11 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         assert(sizeof vertices == sizeof glyph->vertices);
         memcpy(glyph->vertices, vertices, sizeof vertices);
 
+        glyph->size = size;
+        glyph->id = glyph_info->codepoint;
+
+        add_sprite_to_font(m, font, glyph);
+
         return glyph;
 }
 
@@ -226,4 +335,22 @@ int
 glyph_manager_add_font_from_name(struct glyph_manager *m, const char *name)
 {
         return font_manager_add_font_from_name(m->fm, name);
+}
+
+/*
+ * Retrieves useful information about a specific glyph sheet from the
+ * glyph sheet id.
+ */
+struct glyph_sheet
+glyph_manager_get_glyph_sheet(struct glyph_manager *m,
+                              int glyph_sheet)
+{
+        struct sprite_map *map = m->sprite_map[glyph_sheet];
+        return (struct glyph_sheet){
+                .id = glyph_sheet,
+                .width = map->width,
+                .height = map->height,
+                .data = cairo_image_surface_get_data(map->cairo_surface),
+                .format = cairo_image_surface_get_format(map->cairo_surface) == CAIRO_FORMAT_A8 ? GLYPH_SHEET_ALPHA : GLYPH_SHEET_COLOR,
+        };
 }

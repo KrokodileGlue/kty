@@ -14,20 +14,23 @@
 #include <inttypes.h>
 
 #include <fontconfig/fontconfig.h>
+#include <freetype/freetype.h>
 #include <harfbuzz/hb.h>
+#include <harfbuzz/hb-ft.h>
 #include <cairo/cairo.h>
-#include <cairo/cairo-ft.h>
 
 #include "font_manager.h"
 #include "debug.h"
 
 struct font_manager {
-        FcConfig *config;
+        FcConfig *fc_config;
+        FT_Library ft_library;
 
         struct font {
                 FcPattern *fc_pattern;
                 FcPattern *fc_font;
                 FcChar8 *fc_path;
+                FT_Face ft_face;
                 hb_font_t *hb_font;
                 int size;
                 char *name;
@@ -54,10 +57,15 @@ font_manager_init(struct font_manager *m)
 {
 	if (FcInit() != FcTrue) return 1;
 
-        m->config = FcInitLoadConfigAndFonts();
+        m->fc_config = FcInitLoadConfigAndFonts();
 
-        if (!m->config) {
+        if (!m->fc_config) {
                 /* FcFini(); */
+                return 1;
+        }
+
+        if (FT_Init_FreeType(&m->ft_library)) {
+                FcConfigDestroy(m->fc_config);
                 return 1;
         }
 
@@ -78,7 +86,8 @@ font_manager_destroy(struct font_manager *m)
                 font = font->next;
         }
 
-	FcConfigDestroy(m->config);
+	FcConfigDestroy(m->fc_config);
+        FT_Done_FreeType(m->ft_library);
 	/* FcFini(); */
 
         return 0;
@@ -122,11 +131,11 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name)
          * perform. They ask FontConfig to do a kind of loose matching
          * that allows us to use vague names like "monospace".
          */
-	FcConfigSubstitute(m->config, fc_pattern, FcMatchPattern);
+	FcConfigSubstitute(m->fc_config, fc_pattern, FcMatchPattern);
 	FcDefaultSubstitute(fc_pattern);
 
 	FcResult result;
-	FcPattern *fc_font = FcFontMatch(m->config, fc_pattern, &result);
+	FcPattern *fc_font = FcFontMatch(m->fc_config, fc_pattern, &result);
 
         if (!fc_font) {
                 perror("FcFcfontMatch");
@@ -142,8 +151,14 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name)
 
         print("\e[34m%s\e[m -> \e[34m%s\e[m\n", name, fc_path);
 
-        hb_blob_t *blob = hb_blob_create_from_file((char *)fc_path);
-        hb_face_t *hb_face = hb_face_create(blob, 0);
+        FT_Face ft_face;
+
+        if (FT_New_Face(m->ft_library, (char *)fc_path, 0, &ft_face)) {
+                perror("FT_New_Face");
+                return 1;
+        }
+
+        hb_face_t *hb_face = hb_ft_face_create(ft_face, 0);
         hb_font_t *hb_font = hb_font_create(hb_face);
 
         /* Walk to the end of the linked list. */
@@ -162,6 +177,7 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name)
                 .fc_pattern = fc_pattern,
                 .fc_font = fc_font,
                 .fc_path = fc_path,
+                .ft_face = ft_face,
                 .hb_font = hb_font,
                 .name = strdup(name),
                 .next = NULL,
@@ -210,17 +226,18 @@ font_manager_get_font(struct font_manager *m,
                                 .fc_pattern = font->fc_pattern,
                                 .fc_font    = font->fc_font,
                                 .fc_path    = font->fc_path,
+                                .ft_face    = font->ft_face,
                                 .hb_font    = hb_font_create_sub_font(font->hb_font),
                                 .size       = font_size,
                                 .name       = strdup(font->name),
                                 .next       = NULL,
                         };
 
+                        font = *head;
+                        
                         hb_font_set_scale(font->hb_font,
                                           font_size * 64,
                                           font_size * 64);
-
-                        font = *head;
                 }
 
                 return font;
@@ -239,6 +256,12 @@ char *
 font_manager_get_font_name(struct font *font)
 {
         return font->name;
+}
+
+bool
+font_manager_is_font_color(struct font *font)
+{
+        return FT_HAS_COLOR(font->ft_face);
 }
 
 #if 0
