@@ -21,7 +21,7 @@ show_glyph(struct glyph_manager *gm, uint32_t c, int size)
 {
         struct glyph *glyph = glyph_manager_generate_glyph(gm,
                                                            (uint32_t []){ c }, 1,
-                                                           0, 0,
+                                                           0, 1,
                                                            size);
         if (!glyph) return;
 
@@ -47,8 +47,10 @@ int main(void)
 
         char *pattern[] = {
                 "monospace",
+                "monospace:bold",
+                "monospace:italic",
                 "emoji",
-                "cjk mono",
+                "Noto Serif CJK JP",
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
@@ -57,10 +59,11 @@ int main(void)
                         return 1;
                 }
 
-        show_glyph(gm, 'o', 12);
-        show_glyph(gm, 'o', 12);
-        show_glyph(gm, '|',12);
-        show_glyph(gm, 0x1f914, 12);
+        for (int i = 33; i <= 126; i++)
+                show_glyph(gm, i, 36);
+
+        for (int i = 0; i < 30; i++)
+                show_glyph(gm, 0x1f914 + i, 24);
 
         glyph_manager_show(gm);
 

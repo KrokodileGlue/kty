@@ -40,6 +40,8 @@ struct glyph_manager {
                  * it will have `CAIRO_FORMAT_ARGB32`.
                  */
                 cairo_format_t cairo_format;
+                cairo_font_face_t *cairo_face;
+                cairo_t *cr;
 
                 int width, height;
                 struct ivec2 cursor;
@@ -47,7 +49,7 @@ struct glyph_manager {
 
                 bool is_full;
 
-                int max_height[2];
+                int next_line;
                 unsigned num_glyph;
 
                 int id;
@@ -120,9 +122,6 @@ new_sprite_map(struct glyph_manager *m,
 {
         struct sprite_map *map = calloc(1, sizeof *map);
 
-        cairo_format_t format = font_manager_is_font_color(font) ?
-                CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_A8;
-
         /*
          * TODO: Set the width and height smartly. Perhaps the
          * texture size can be configured for the glyph
@@ -130,17 +129,35 @@ new_sprite_map(struct glyph_manager *m,
          * the maximum texture size and set that on the glyph
          * manager.
          */
-        int width = 1024, height = 1024;
+        int width = 256, height = 256;
+
+        int pt_size = font_manager_get_font_pt_size(font);
+
+        cairo_format_t format = font_manager_is_font_color(font) ?
+                CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_A8;
+
+        cairo_surface_t *cairo_surface = cairo_image_surface_create(format,
+                                                                    width,
+                                                                    height);
+
+        cairo_t *cr = cairo_create(cairo_surface);
+
+        FT_Face ft_face = font_manager_get_font_ft_face(font);
+        cairo_font_face_t *cairo_face = cairo_ft_font_face_create_for_ft_face(ft_face, 0);
+        cairo_set_font_face(cr, cairo_face);
+        cairo_set_font_size(cr, pt_size);
 
         *map = (struct sprite_map){
-                .id = id,
-                .width = width,
-                .height = height,
-                .font = font,
-                .cairo_format = format,
-                .cairo_surface = cairo_image_surface_create(format,
-                                                            width,
-                                                            height),
+                .id            = id,
+                .width         = width,
+                .height        = height,
+                .font          = font,
+                .cairo_format  = format,
+                .cr            = cr,
+                .cairo_surface = cairo_surface,
+                .cairo_face    = cairo_face,
+                .next_line     = pt_size,
+                .cursor        = { .y = pt_size },
         };
 
         print("Sprite map %d:\n", map->id);
@@ -200,6 +217,39 @@ add_sprite_to_font(struct glyph_manager *m,
 
         struct sprite_map *map = get_first_unfilled_sprite_map(m, font);
         glyph->glyph_sheet = map->id;
+
+        cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(1);
+
+        cairo_glyphs[0].index = glyph->id;
+
+        if (map->cursor.x + glyph->size.x > map->width
+            || map->cursor.y + glyph->size.y > map->height) {
+                map->is_full = true;
+                map = new_sprite_map(m, font, m->num_sprite_map);
+        }
+
+        cairo_glyphs[0].x = map->cursor.x;
+        cairo_glyphs[0].y = map->cursor.y;
+
+        map->cursor.x += glyph->size.x + 1;
+
+        map->next_line = MAX(map->next_line, map->cursor.y + glyph->size.y);
+
+        if (map->cursor.x + glyph->size.x > map->width) {
+                map->cursor.y = map->next_line + 1;
+                map->cursor.x = 0;
+        }
+
+        /* TODO: Wrap cursor to next line etc. */
+
+        cairo_show_glyphs(map->cr, cairo_glyphs, 1);
+
+        char buf[100];
+        snprintf(buf, sizeof buf, "output-%s-%d-%d.png",
+                 font_manager_get_font_name(font),
+                 font_manager_get_font_pt_size(font),
+                 map->id);
+        cairo_surface_write_to_png(map->cairo_surface, buf);
 }
 
 /*

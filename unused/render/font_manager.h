@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <freetype/freetype.h>
 #include <harfbuzz/hb.h>
 
 struct font_manager;
@@ -29,6 +30,7 @@ int font_manager_get_sizes(struct font_manager *m, int *cw, int *ch);
  * Functions for retrieving font properties.
  */
 hb_font_t *font_manager_get_hb_font(struct font *font);
+FT_Face font_manager_get_font_ft_face(struct font *font);
 char *font_manager_get_font_name(struct font *font);
 int font_manager_get_font_pt_size(struct font *font);
 bool font_manager_is_font_color(struct font *font);

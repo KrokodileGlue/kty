@@ -19,7 +19,6 @@
 #include <freetype/freetype.h>
 #include <harfbuzz/hb.h>
 #include <harfbuzz/hb-ft.h>
-#include <cairo/cairo.h>
 
 #include "font_manager.h"
 #include "debug.h"
@@ -200,6 +199,16 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
 /*
  * Get the first font in the fallback hierarchy which contains the
  * code point `c`.
+ *
+ * This shouldn't be construed as a function which should be used
+ * during rendering to fetch the font used to render a given code
+ * point; you can't pick the correct glyph for a code point without
+ * knowing the surrounding characters (ligatures, ZWJ sequences,
+ * Arabic, emoji modifiers, cursive fonts). This is used as a jumping
+ * off point for rendering longer sequences; specificall the glyph
+ * manager uses this to identify which font should be used to render a
+ * sequence which corresponds to a single glyph. In fact, this
+ * function is used to segment a line of text into runs.
  */
 struct font *
 font_manager_get_font(struct font_manager *m,
@@ -292,24 +301,6 @@ font_manager_is_font_color(struct font *font)
         return FT_HAS_COLOR(font->ft_face);
 }
 
-#if 0
-int
-font_manager_get_sizes(struct font_manager *m, int *cw, int *ch)
-{
-        struct font *font = font_manager_get_font(m, 'x', 12);
-
-        hb_codepoint_t glyph;
-        hb_font_get_glyph(font->hb_font, 'x', 0, &glyph);
-
-        if (glyph) {
-                *cw = hb_font_get_glyph_h_advance(font->hb_font, glyph) / 64;
-                *ch = -hb_font_get_glyph_v_advance(font->hb_font, glyph) / 64;
-        }
-
-        return 0;
-}
-#endif
-
 void
 font_manager_describe_font(struct font *font)
 {
@@ -344,4 +335,10 @@ int
 font_manager_get_font_pt_size(struct font *font)
 {
         return font->size;
+}
+
+FT_Face
+font_manager_get_font_ft_face(struct font *font)
+{
+        return font->ft_face;
 }
