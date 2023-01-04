@@ -269,6 +269,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_show_glyphs(map->cr, cairo_glyphs, 1);
 
         /* TODO: Get rid of this obviously. */
+#if 1
         char buf[100];
         snprintf(buf, sizeof buf, "%s-%d-%d.png",
                  font->name,
@@ -277,7 +278,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_surface_write_to_png(map->cairo_surface, buf);
 
         static int global = 0;
-        if (global++ == 4) {
+        if (global++ == 93) {
                 cairo_surface_t *surface =
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
@@ -286,24 +287,23 @@ add_sprite_to_font(struct glyph_manager *m,
                                                            sprite_coordinates[4].y - sprite_coordinates[0].y);
                 cairo_surface_write_to_png(surface, "a.png");
         }
+#endif
 }
 
 /*
- * Look up the glyph for the given code points.
- *
- * Returns NULL if no glyph could be found for the given text.
+ * Get a glyph from a given glyph id in the given font.
  */
 static struct glyph *
 look_up_glyph(struct glyph_manager *m,
-              int glyph_id,
-              bool bold,
-              bool italic)
+              struct font *font,
+              int glyph_id)
 {
-        /* TODO: Use a hash for this lookup. */
+        /*
+         * TODO: Use a hash for this lookup.
+         */
         for (unsigned i = 0; i < m->num_glyph; i++) {
+                if (m->glyph[i].font != font) continue;
                 if (m->glyph[i].id != glyph_id) continue;
-                if (m->glyph[i].bold != bold) continue;
-                if (m->glyph[i].italic != italic) continue;
                 return m->glyph + i;
         }
 
@@ -335,65 +335,19 @@ new_glyph(struct glyph_manager *m)
  */
 struct glyph *
 glyph_manager_generate_glyph(struct glyph_manager *m,
-                             uint32_t *text,
-                             unsigned len,
-                             bool bold,
-                             bool italic,
-                             int font_size)
+                             struct font *font,
+                             int glyph_id)
 {
-        /*
-         * Now we have to do the heavy lifting of actually generating
-         * all of the glyph information by shaping with Harfbuzz and
-         * extracting glyph information.
-         */
-
-        /*
-         * Kind of hacky; right now we'll just assume that every
-         * character in a ZWJ sequence has the same script and the
-         * same font. That's why we can just look up the font for the
-         * first character in the sequence and use it for shaping the
-         * entire sequence.
-         */
-        struct font *font = font_manager_get_font(m->fm, text[0], bold, italic, font_size);
-
-        assert(font);
-
-        char *font_name = font->name;
         hb_font_t *hb_font = font->hb_font;
 
         assert(hb_font);
 
-        uint8_t tmpbuf[10];
-        unsigned tmpbuflen;
-        utf8encode(text[0], tmpbuf, &tmpbuflen);
-
-        hb_buffer_t *buf = hb_buffer_create();
-
-        hb_buffer_add_utf32(buf, text, len, 0, -1);
-        hb_buffer_set_direction(buf, HB_DIRECTION_LTR);
-        hb_buffer_set_language(buf, hb_language_from_string("en", -1));
-
-        hb_shape(hb_font, buf, NULL, 0);
-
-        unsigned glyph_count;
-        hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(buf, &glyph_count);
-
-        assert(glyph_count == 1); /* A cell should only have one glyph */
-
-        struct glyph *glyph = look_up_glyph(m, glyph_info->codepoint, bold, italic);
+        struct glyph *glyph = look_up_glyph(m, font, glyph_id);
         if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
         glyph = new_glyph(m);
 
-        /*
-         * At this point we have everything we need to construct the
-         * gpu cell.
-         */
-
         hb_glyph_extents_t extents;
-
-        hb_font_get_glyph_extents(hb_font,
-                                  glyph_info->codepoint,
-                                  &extents);
+        hb_font_get_glyph_extents(hb_font, glyph_id, &extents);
 
         struct ivec2 size = {
                 .x = ceil((float)extents.width / 64.0),
@@ -405,10 +359,6 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .y = ceil((float)extents.y_bearing / 64.0)
         };
 
-        print(LOG_EVERYTHING, "Picking font %s for U+%"PRIX32" (%.*s) -> size: %d,%d / bearing: %d,%d\n",
-              font_name, text[0], tmpbuflen, (char *)tmpbuf, size.x, size.y,
-              bearing.x, bearing.y);
-
         struct ivec2 vertices[6] = {
                 { bearing.x,          bearing.y },
                 { bearing.x + size.x, bearing.y },
@@ -419,11 +369,11 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         };
 
         *glyph = (struct glyph){
-                .id = glyph_info->codepoint,
+                .id = glyph_id,
                 .index = glyph - m->glyph,
                 /* int glyph_sheet; */
-                .bold = bold,
-                .italic = italic,
+                .bold = font->bold,
+                .italic = font->italic,
                 .font = font,
                 .size = size,
                 /* struct ivec2 vertices[6]; */

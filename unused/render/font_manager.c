@@ -82,20 +82,6 @@ font_manager_destroy(struct font_manager *m)
         return 0;
 }
 
-static bool
-is_ft_face_bold(FT_Face face)
-{
-        return !!strstr(face->style_name, "bold")
-                || !!strstr(face->style_name, "Bold");
-}
-
-static bool
-is_ft_face_italic(FT_Face face)
-{
-        return !!strstr(face->style_name, "italic")
-                || !!strstr(face->style_name, "Italic");
-}
-
 /*
  * Add a font which best fits the name given by `name`.
  *
@@ -182,8 +168,8 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
                 .hb_font        = hb_font,
                 .has_color      = FT_HAS_COLOR(ft_face),
                 .is_fixed_width = FT_IS_FIXED_WIDTH(ft_face),
-                .bold           = is_ft_face_bold(ft_face),
-                .italic         = is_ft_face_italic(ft_face),
+                .bold           = ft_face->style_flags & FT_STYLE_FLAG_BOLD,
+                .italic         = ft_face->style_flags & FT_STYLE_FLAG_ITALIC,
                 .size           = font_size,
                 .name           = strdup(ft_face->family_name),
                 .next           = NULL,
@@ -344,15 +330,15 @@ font_manager_describe_font(struct font *font)
         long bbox_height = ceil((float)(ft_face->bbox.yMax -
                                         ft_face->bbox.yMin) / 64.0);
 
-        print(LOG_EVERYTHING, "Describing font \e[31m%s\e[m (%s) at %d pt:\n", font->name, ft_face->style_name, font->size);
-        print(LOG_EVERYTHING, "\tBBox height:\t%ld\n", bbox_height);
-        print(LOG_EVERYTHING, "\tHas color:\t%s\n", font->has_color ? "Yes" : "No");
-        print(LOG_EVERYTHING, "\tIs bold:\t%s\n", font->bold ? "Yes" : "No");
-        print(LOG_EVERYTHING, "\tIs italic:\t%s\n", font->italic ? "Yes" : "No");
-        print(LOG_EVERYTHING, "\tFixed width:\t%s\n", font->is_fixed_width ? "Yes" : "No");
-        print(LOG_EVERYTHING, "\tFull path:\t%s\n", font->path);
-        print(LOG_EVERYTHING, "\tStyle:\t\t%s\n", (char *)ft_face->style_name);
-        print(LOG_EVERYTHING, "\tGlyphs:\t\t%ld\n", ft_face->num_glyphs);
+        print(LOG_DETAIL, "Describing font \e[31m%s\e[m (%s) at %d pt:\n", font->name, ft_face->style_name, font->size);
+        print(LOG_DETAIL, "\tBBox height:\t%ld\n", bbox_height);
+        print(LOG_DETAIL, "\tHas color:\t%s\n", font->has_color ? "Yes" : "No");
+        print(LOG_DETAIL, "\tIs bold:\t%s\n", font->bold ? "Yes" : "No");
+        print(LOG_DETAIL, "\tIs italic:\t%s\n", font->italic ? "Yes" : "No");
+        print(LOG_DETAIL, "\tFixed width:\t%s\n", font->is_fixed_width ? "Yes" : "No");
+        print(LOG_DETAIL, "\tFull path:\t%s\n", font->path);
+        print(LOG_DETAIL, "\tStyle:\t\t%s\n", (char *)ft_face->style_name);
+        print(LOG_DETAIL, "\tGlyphs:\t\t%ld\n", ft_face->num_glyphs);
 }
 
 int

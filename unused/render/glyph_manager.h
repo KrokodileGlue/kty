@@ -69,17 +69,11 @@ struct glyph {
 struct glyph_manager;
 
 struct glyph_manager *glyph_manager_create(void);
-int glyph_manager_show(struct glyph_manager *m);
 int glyph_manager_init(struct glyph_manager *m);
 int glyph_manager_destroy(struct glyph_manager *m);
-int glyph_manager_add_font_from_name(struct glyph_manager *m,
-                                     const char *name,
-                                     int font_size);
+int glyph_manager_show(struct glyph_manager *m);
 struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
 struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,
-                                           uint32_t *text,
-                                           unsigned len,
-                                           bool bold,
-                                           bool italic,
-                                           int font_size);
+                                           struct font *font,
+                                           int glyph_id);

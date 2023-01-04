@@ -2,16 +2,36 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "glyph_manager.h"
+#include "layout_engine.h"
 #include "debug.h"
 
-enum debug_level debug_level = LOG_DETAIL;
+enum debug_level debug_level = LOG_EVERYTHING;
 
 static void
-show_glyph(struct glyph_manager *gm, uint32_t c, int size)
+show_glyphs(struct layout_engine *e, uint32_t *c, unsigned len_c, int size)
 {
-        struct glyph *glyph = glyph_manager_generate_glyph(gm,
-                    (uint32_t []){ c }, 1, true, true, size / 0.75);
+        /*
+         * Use the layout engine to separate text into runs (so the
+         * layout engine owns the font manager), run harfbuzz to get
+         * the glyphs, turn the glyphs into sprites through the glyph
+         * manager.
+         */
+
+        struct cpu_cell *cells = malloc(len_c * sizeof *cells);
+
+        for (unsigned i = 0; i < len_c; i++)
+                cells[i] = (struct cpu_cell){
+                        .c = { c[i] },
+                        .num_code_point = 1,
+                        .fg = 1,
+                        .bg = 1,
+                        .bold = rand() % 2,
+                        .italic = rand() % 2,
+                };
+
+        unsigned len;
+        struct glyph **glyph = layout(e, cells, len_c, size, &len);
+
         if (!glyph) return;
 
         /* printf("glyph %d (%d): %d,%d\n", glyph->id, glyph->index, glyph->size.x, glyph->size.y); */
@@ -31,35 +51,49 @@ show_glyph(struct glyph_manager *gm, uint32_t c, int size)
 
 int main(void)
 {
-        struct glyph_manager *gm = glyph_manager_create();
+        srand(0);
 
-        if (glyph_manager_init(gm)) {
-                perror("glyph_manager_init");
+        struct layout_engine *e = layout_engine_create();
+
+        if (layout_engine_init(e)) {
+                perror("layout_engine_init");
                 return 1;
         }
 
         char *pattern[] = {
-                "monospace",
-                "monospace:bold",
-                "monospace:italic",
-                "monospace:bold:italic",
+                "Fira Code:regular",
+                "Fira Code:bold",
+                "Fira Code:italic",
+                "Fira Code:bold:italic",
                 "emoji",
                 "Noto Serif CJK JP",
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
-                if (glyph_manager_add_font_from_name(gm, pattern[i], 12)) {
+                if (layout_engine_add_font_from_name(e, pattern[i], 12)) {
                         print(LOG_CRITICAL, "Couldn't load font %s\n", pattern[i]);
                         return 1;
                 }
 
+        static uint32_t c[1000];
+        unsigned num_c = 0;
+
         for (int i = 33; i <= 126; i++)
-                show_glyph(gm, i, 36);
+                c[num_c++] = i;
 
         for (int i = 0; i < 30; i++)
-                show_glyph(gm, 0x1f914 + i, 36);
+                c[num_c++] = 0x1f914 + i;
 
-        glyph_manager_show(gm);
+        c[num_c++] = ' ';
+        c[num_c++] = '-';
+        c[num_c++] = '>';
+        c[num_c++] = ' ';
+
+        show_glyphs(e, c, num_c, 24);
+
+        layout_engine_show(e);
+
+        /* glyph_manager_show(gm); */
 
         /* if (glyph_manager_destroy(gm)) { */
         /*         perror("glyph_manager_destroy"); */
