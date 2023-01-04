@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <assert.h>
+#include <math.h>
 
 #include <fontconfig/fontconfig.h>
 #include <freetype/freetype.h>
@@ -32,6 +34,8 @@ struct font_manager {
                 FcChar8 *fc_path;
                 FT_Face ft_face;
                 hb_font_t *hb_font;
+                bool has_color;
+                bool is_fixed_width;
                 int size;
                 char *name;
                 struct font *next;
@@ -122,7 +126,7 @@ font_manager_destroy(struct font_manager *m)
  * and set the size to whatever we want.
  */
 int
-font_manager_add_font_from_name(struct font_manager *m, const char *name)
+font_manager_add_font_from_name(struct font_manager *m, const char *name, int font_size)
 {
 	FcPattern *fc_pattern = FcNameParse((FcChar8 *)name);
 
@@ -174,14 +178,21 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name)
          * font` ever gets big this could lead to stack smashing.
          */
         **head = (struct font){
-                .fc_pattern = fc_pattern,
-                .fc_font = fc_font,
-                .fc_path = fc_path,
-                .ft_face = ft_face,
-                .hb_font = hb_font,
-                .name = strdup(name),
-                .next = NULL,
+                .fc_pattern     = fc_pattern,
+                .fc_font        = fc_font,
+                .fc_path        = fc_path,
+                .ft_face        = ft_face,
+                .hb_font        = hb_font,
+                .has_color      = FT_HAS_COLOR(ft_face),
+                .is_fixed_width = FT_IS_FIXED_WIDTH(ft_face),
+                .size           = font_size,
+                .name           = strdup(ft_face->family_name),
+                .next           = NULL,
         };
+
+        hb_font_set_scale((*head)->hb_font, font_size * 64, font_size * 64);
+
+        font_manager_describe_font(*head);
 
         return 0;
 }
@@ -210,35 +221,52 @@ font_manager_get_font(struct font_manager *m,
                  * If the font doesn't contain a glyph for the code
                  * point continue.
                  */
-                if (!hb_font_get_glyph(font->hb_font, c, 0,
-                                       &(hb_codepoint_t){0})) {
+                hb_codepoint_t glyph_id;
+
+                if (!hb_font_get_glyph(font->hb_font, c, 0, &glyph_id)
+                    || font->size != font_size) {
                         font = font->next;
                         continue;
                 }
 
-                if (font->size != font_size) {
-                        struct font **head = &m->fonts;
-                        while (*head) head = &(*head)->next;
-                        *head = calloc(1, sizeof **head);
-                        m->num_font++;
+                return font;
+        }
 
-                        **head = (struct font){
-                                .fc_pattern = font->fc_pattern,
-                                .fc_font    = font->fc_font,
-                                .fc_path    = font->fc_path,
-                                .ft_face    = font->ft_face,
-                                .hb_font    = hb_font_create_sub_font(font->hb_font),
-                                .size       = font_size,
-                                .name       = strdup(font->name),
-                                .next       = NULL,
-                        };
+        font = m->fonts;
 
-                        font = *head;
-                        
-                        hb_font_set_scale(font->hb_font,
-                                          font_size * 64,
-                                          font_size * 64);
+        while (font) {
+                hb_codepoint_t glyph_id;
+
+                if (!hb_font_get_glyph(font->hb_font, c, 0, &glyph_id)) {
+                        font = font->next;
+                        continue;
                 }
+
+                assert(font->size != font_size);
+
+                struct font **head = &font->next;
+                while (*head) head = &(*head)->next;
+                *head = calloc(1, sizeof **head);
+                m->num_font++;
+
+                **head = (struct font){
+                        .fc_pattern     = font->fc_pattern,
+                        .fc_font        = font->fc_font,
+                        .fc_path        = font->fc_path,
+                        .ft_face        = font->ft_face,
+                        .has_color      = font->has_color,
+                        .is_fixed_width = font->is_fixed_width,
+                        .hb_font        = hb_font_create_sub_font(font->hb_font),
+                        .size           = font_size,
+                        .name           = strdup(font->name),
+                        .next           = NULL,
+                };
+
+                font = *head;
+
+                hb_font_set_scale(font->hb_font,
+                                  font_size * 64,
+                                  font_size * 64);
 
                 return font;
         }
@@ -281,3 +309,39 @@ font_manager_get_sizes(struct font_manager *m, int *cw, int *ch)
         return 0;
 }
 #endif
+
+void
+font_manager_describe_font(struct font *font)
+{
+        FT_Face ft_face = font->ft_face;
+
+        long bbox_height = ceil((float)(ft_face->bbox.yMax -
+                                        ft_face->bbox.yMin) / 64.0);
+
+        print("Describing font \e[31m%s\e[m at %d pt:\n", font->name, font->size);
+        print("\tBBox height:\t%ld\n", bbox_height);
+        print("\tHas color:\t%s\n", font->has_color ? "Yes" : "No");
+        print("\tFixed width:\t%s\n", font->is_fixed_width ? "Yes" : "No");
+        print("\tFull path:\t%s\n", (char *)font->fc_path);
+        print("\tStyle:\t\t%s\n", (char *)ft_face->style_name);
+        print("\tGlyphs:\t\t%ld\n", ft_face->num_glyphs);
+}
+
+int
+font_manager_show(struct font_manager *m)
+{
+        print("Font manager stats:\n");
+        print("\tFonts loaded:\t%d\n", m->num_font);
+        struct font *font = m->fonts;
+        while (font) {
+                font_manager_describe_font(font);
+                font = font->next;
+        }
+        return 0;
+}
+
+int
+font_manager_get_font_pt_size(struct font *font)
+{
+        return font->size;
+}

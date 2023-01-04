@@ -130,7 +130,7 @@ new_sprite_map(struct glyph_manager *m,
          * the maximum texture size and set that on the glyph
          * manager.
          */
-        int width = 1028, height = 1028;
+        int width = 1024, height = 1024;
 
         *map = (struct sprite_map){
                 .id = id,
@@ -142,6 +142,12 @@ new_sprite_map(struct glyph_manager *m,
                                                             width,
                                                             height),
         };
+
+        print("Sprite map %d:\n", map->id);
+        print("\twidth: %d\n", map->width);
+        print("\theight: %d\n", map->height);
+        print("\tformat: %s\n", map->cairo_format == CAIRO_FORMAT_ARGB32
+              ? "CAIRO_FORMAT_ARGB32" : "CAIRO_FORMAT_A8");
 
         return map;
 }
@@ -197,12 +203,16 @@ add_sprite_to_font(struct glyph_manager *m,
 }
 
 /*
- * Look up the glyph for a given `cpu_cell`.
+ * Look up the glyph for the given code points.
  *
- * Returns NULL if no glyph could be found for the given cpu cell.
+ * Returns NULL if no glyph could be found for the given text.
  */
 static struct glyph *
-look_up_glyph(struct glyph_manager *m, uint32_t *text, unsigned len)
+look_up_glyph(struct glyph_manager *m,
+              uint32_t *text,
+              unsigned len,
+              bool bold,
+              bool italic)
 {
         /* TODO: Use a hash for this lookup. */
         for (unsigned i = 0; i < m->num_glyph; i++) {
@@ -210,29 +220,17 @@ look_up_glyph(struct glyph_manager *m, uint32_t *text, unsigned len)
                         continue;
                 if (memcmp(m->glyph[i].c, text, len * sizeof *text))
                         continue;
+                if (m->glyph[i].bold != bold) continue;
+                if (m->glyph[i].italic != italic) continue;
                 return m->glyph + i;
         }
 
         return NULL;
 }
 
-/*
- * Creates an entry in the glyph table for the glyph appropriate for
- * the given cpu cell. Note that this requires more information than
- * just the code points; it also needs information about attributes
- * like bold/italic which are contained in the cpu cell.
- */
-struct glyph *
-glyph_manager_generate_glyph(struct glyph_manager *m,
-                             uint32_t *text,
-                             unsigned len,
-                             int font_size)
+static struct glyph *
+new_glyph(struct glyph_manager *m)
 {
-        struct glyph *glyph = look_up_glyph(m, text, len);
-
-        /* If the glyph already exists then we can just return it. */
-        if (glyph) return glyph;
-
         /* The glyph table is full and has to be expanded. */
         if (m->num_glyph == m->capacity_glyph) {
                 /* Why not make 10 the minimum number of glyphs? */
@@ -243,6 +241,27 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 memset(m->glyph + m->num_glyph, 0,
                        (m->capacity_glyph - m->num_glyph) * sizeof *m->glyph);
         }
+
+        return m->glyph + m->num_glyph++;
+}
+
+/*
+ * Creates an entry in the glyph table for the glyph appropriate for
+ * the given text. Note that this requires more information than just
+ * the code points; it also needs information about attributes like
+ * bold/italic which are contained in the cpu cell.
+ */
+struct glyph *
+glyph_manager_generate_glyph(struct glyph_manager *m,
+                             uint32_t *text,
+                             unsigned len,
+                             bool bold,
+                             bool italic,
+                             int font_size)
+{
+        struct glyph *glyph = look_up_glyph(m, text, len, bold, italic);
+        if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
+        glyph = new_glyph(m);
 
         /*
          * Now we have to do the heavy lifting of actually generating
@@ -289,9 +308,6 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
          * gpu cell.
          */
 
-        glyph = m->glyph + m->num_glyph;
-        m->num_glyph++;
-
         hb_glyph_extents_t extents;
 
         hb_font_get_glyph_extents(hb_font,
@@ -308,7 +324,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .y = ceil((float)extents.y_bearing / 64.0)
         };
 
-        print("size: %d,%d / bearing: %d,%d\n", size.x, size.y,
+        print("\t-> size: %d,%d / bearing: %d,%d\n", size.x, size.y,
               bearing.x, bearing.y);
 
         struct ivec2 vertices[6] = {
@@ -320,11 +336,25 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 { bearing.x + size.x, bearing.y },
         };
 
-        assert(sizeof vertices == sizeof glyph->vertices);
-        memcpy(glyph->vertices, vertices, sizeof vertices);
+        *glyph = (struct glyph){
+                .id = glyph_info->codepoint,
+                .index = glyph - m->glyph,
+                /* int glyph_sheet; */
+                .bold = bold,
+                .italic = italic,
+                .font = font,
+                /* uint32_t c[MAX_CODE_POINTS_PER_CELL]; */
+                .num_code_point = len,
+                .size = size,
+                /* struct ivec2 vertices[6]; */
+                /* struct vec2 sprite_coordinates[6]; */
+        };
 
-        glyph->size = size;
-        glyph->id = glyph_info->codepoint;
+        assert(sizeof vertices == sizeof glyph->vertices);
+        assert(len * sizeof *text <= sizeof glyph->c);
+
+        memcpy(glyph->vertices, vertices, sizeof vertices);
+        memcpy(glyph->c, text, sizeof glyph->c);
 
         add_sprite_to_font(m, font, glyph);
 
@@ -332,9 +362,11 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
 }
 
 int
-glyph_manager_add_font_from_name(struct glyph_manager *m, const char *name)
+glyph_manager_add_font_from_name(struct glyph_manager *m,
+                                 const char *name,
+                                 int font_size)
 {
-        return font_manager_add_font_from_name(m->fm, name);
+        return font_manager_add_font_from_name(m->fm, name, font_size);
 }
 
 /*
@@ -353,4 +385,26 @@ glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                 .data = cairo_image_surface_get_data(map->cairo_surface),
                 .format = cairo_image_surface_get_format(map->cairo_surface) == CAIRO_FORMAT_A8 ? GLYPH_SHEET_ALPHA : GLYPH_SHEET_COLOR,
         };
+}
+
+int
+glyph_manager_show(struct glyph_manager *m)
+{
+        print("Glyph manager stats:\n");
+        print("\tGlyphs loaded:\t%d (capacity %d)\n", m->num_glyph, m->capacity_glyph);
+        print("\tSprite maps:\t%d (capacity %d)\n", m->num_sprite_map, m->capacity_sprite_map);
+
+        for (unsigned i = 0; i < m->num_glyph; i++) {
+                struct glyph *glyph = m->glyph + i;
+                print("\tGlyph %d in %s (%d pt) (bold=%s, italic=%s)\n",
+                      glyph->id,
+                      font_manager_get_font_name(glyph->font),
+                      font_manager_get_font_pt_size(glyph->font),
+                      glyph->bold ? "Yes" : "No",
+                      glyph->italic ? "Yes" : "No"
+                      );
+        }
+
+        /* font_manager_show(m->fm); */
+        return 0;
 }

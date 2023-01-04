@@ -11,6 +11,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include "config.h"
 #include "cpu_cell.h"
@@ -52,7 +53,13 @@ struct glyph_sheet {
 
 struct glyph {
         int id;                 /* The id of this glyph */
+        int index;              /* The index of this glyph */
         int glyph_sheet;        /* The id of the glyph sheet */
+
+        bool bold;
+        bool italic;
+
+        struct font *font;
 
         uint32_t c[MAX_CODE_POINTS_PER_CELL];
         unsigned num_code_point;
@@ -65,12 +72,15 @@ struct glyph {
 struct glyph_manager;
 
 struct glyph_manager *glyph_manager_create(void);
+int glyph_manager_show(struct glyph_manager *m);
 int glyph_manager_init(struct glyph_manager *m);
 int glyph_manager_destroy(struct glyph_manager *m);
-int glyph_manager_add_font_from_name(struct glyph_manager *m, const char *name);
+int glyph_manager_add_font_from_name(struct glyph_manager *m, const char *name, int font_size);
 struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
 struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,
                                            uint32_t *text,
                                            unsigned len,
+                                           bool bold,
+                                           bool italic,
                                            int font_size);

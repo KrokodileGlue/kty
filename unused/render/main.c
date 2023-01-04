@@ -19,20 +19,21 @@
 static void
 show_glyph(struct glyph_manager *gm, uint32_t c, int size)
 {
-        struct glyph *glyph = glyph_manager_generate_glyph(gm, (uint32_t []){ c }, 1, size);
+        struct glyph *glyph = glyph_manager_generate_glyph(gm,
+                                                           (uint32_t []){ c }, 1,
+                                                           0, 0,
+                                                           size);
         if (!glyph) return;
 
-        printf("glyph %d: %d,%d\n", glyph->id, glyph->size.x, glyph->size.y);
+        /* printf("glyph %d (%d): %d,%d\n", glyph->id, glyph->index, glyph->size.x, glyph->size.y); */
 
         struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(gm, glyph->glyph_sheet);
 
-        puts("Sprite sheet:");
-
-        printf("id: %d\n", sheet.id);
-        printf("width: %d\n", sheet.width);
-        printf("height: %d\n", sheet.height);
-        printf("data: %p\n", sheet.data);
-        printf("format: %s\n", (char *[]){ "alpha", "color" }[sheet.format]);
+        /* printf("id: %d\n", sheet.id); */
+        /* printf("width: %d\n", sheet.width); */
+        /* printf("height: %d\n", sheet.height); */
+        /* printf("data: %p\n", sheet.data); */
+        /* printf("format: %s\n", (char *[]){ "alpha", "color" }[sheet.format]); */
 }
 
 int main(void)
@@ -51,14 +52,17 @@ int main(void)
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
-                if (glyph_manager_add_font_from_name(gm, pattern[i])) {
+                if (glyph_manager_add_font_from_name(gm, pattern[i], 12)) {
                         print("Couldn't load font %s\n", pattern[i]);
                         return 1;
                 }
 
         show_glyph(gm, 'o', 12);
+        show_glyph(gm, 'o', 12);
         show_glyph(gm, '|',12);
         show_glyph(gm, 0x1f914, 12);
+
+        glyph_manager_show(gm);
 
         /* if (glyph_manager_destroy(gm)) { */
         /*         perror("glyph_manager_destroy"); */
