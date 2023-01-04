@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <math.h>
+#include <ctype.h>
 
 #include <fontconfig/fontconfig.h>
 #include <freetype/freetype.h>
@@ -26,20 +27,7 @@
 struct font_manager {
         FcConfig *fc_config;
         FT_Library ft_library;
-
-        struct font {
-                FcPattern *fc_pattern;
-                FcPattern *fc_font;
-                FcChar8 *fc_path;
-                FT_Face ft_face;
-                hb_font_t *hb_font;
-                bool has_color;
-                bool is_fixed_width;
-                int size;
-                char *name;
-                struct font *next;
-        } *fonts;
-
+        struct font *fonts;
         int num_font;
 };
 
@@ -82,8 +70,6 @@ font_manager_destroy(struct font_manager *m)
 
         /* Free the assets associated with each font. */
         while (font) {
-                FcPatternDestroy(font->fc_font);
-                FcPatternDestroy(font->fc_pattern);
                 hb_font_destroy(font->hb_font);
                 free(font->name);
                 font = font->next;
@@ -94,6 +80,20 @@ font_manager_destroy(struct font_manager *m)
 	/* FcFini(); */
 
         return 0;
+}
+
+static bool
+is_ft_face_bold(FT_Face face)
+{
+        return !!strstr(face->style_name, "bold")
+                || !!strstr(face->style_name, "Bold");
+}
+
+static bool
+is_ft_face_italic(FT_Face face)
+{
+        return !!strstr(face->style_name, "italic")
+                || !!strstr(face->style_name, "Italic");
 }
 
 /*
@@ -152,7 +152,7 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
                 return 1;
         }
 
-        print("\e[34m%s\e[m -> \e[34m%s\e[m\n", name, fc_path);
+        print(LOG_INFORMATION, "\e[34m%s\e[m -> \e[34m%s\e[m\n", name, fc_path);
 
         FT_Face ft_face;
 
@@ -177,17 +177,20 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
          * font` ever gets big this could lead to stack smashing.
          */
         **head = (struct font){
-                .fc_pattern     = fc_pattern,
-                .fc_font        = fc_font,
-                .fc_path        = fc_path,
+                .path           = strdup((char *)fc_path),
                 .ft_face        = ft_face,
                 .hb_font        = hb_font,
                 .has_color      = FT_HAS_COLOR(ft_face),
                 .is_fixed_width = FT_IS_FIXED_WIDTH(ft_face),
+                .bold           = is_ft_face_bold(ft_face),
+                .italic         = is_ft_face_italic(ft_face),
                 .size           = font_size,
                 .name           = strdup(ft_face->family_name),
                 .next           = NULL,
         };
+
+        FcPatternDestroy(fc_font);
+        FcPatternDestroy(fc_pattern);
 
         hb_font_set_scale((*head)->hb_font, font_size * 64, font_size * 64);
 
@@ -205,7 +208,7 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
  * point; you can't pick the correct glyph for a code point without
  * knowing the surrounding characters (ligatures, ZWJ sequences,
  * Arabic, emoji modifiers, cursive fonts). This is used as a jumping
- * off point for rendering longer sequences; specificall the glyph
+ * off point for rendering longer sequences; specifically the glyph
  * manager uses this to identify which font should be used to render a
  * sequence which corresponds to a single glyph. In fact, this
  * function is used to segment a line of text into runs.
@@ -213,6 +216,8 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
 struct font *
 font_manager_get_font(struct font_manager *m,
                       uint32_t c,
+                      bool bold,
+                      bool italic,
                       int font_size)
 {
         struct font *font = m->fonts;
@@ -233,7 +238,9 @@ font_manager_get_font(struct font_manager *m,
                 hb_codepoint_t glyph_id;
 
                 if (!hb_font_get_glyph(font->hb_font, c, 0, &glyph_id)
-                    || font->size != font_size) {
+                    || font->size != font_size
+                    || font->bold != bold
+                    || font->italic != italic) {
                         font = font->next;
                         continue;
                 }
@@ -242,6 +249,7 @@ font_manager_get_font(struct font_manager *m,
         }
 
         font = m->fonts;
+        struct font *fallback = NULL;
 
         while (font) {
                 hb_codepoint_t glyph_id;
@@ -251,7 +259,17 @@ font_manager_get_font(struct font_manager *m,
                         continue;
                 }
 
-                assert(font->size != font_size);
+                if (font->bold != bold) {
+                        if (!fallback) fallback = font;
+                        font = font->next;
+                        continue;
+                }
+
+                if (font->italic != italic) {
+                        if (!fallback) fallback = font;
+                        font = font->next;
+                        continue;
+                }
 
                 struct font **head = &font->next;
                 while (*head) head = &(*head)->next;
@@ -259,12 +277,12 @@ font_manager_get_font(struct font_manager *m,
                 m->num_font++;
 
                 **head = (struct font){
-                        .fc_pattern     = font->fc_pattern,
-                        .fc_font        = font->fc_font,
-                        .fc_path        = font->fc_path,
+                        .path           = strdup(font->path),
                         .ft_face        = font->ft_face,
                         .has_color      = font->has_color,
                         .is_fixed_width = font->is_fixed_width,
+                        .bold           = font->bold,
+                        .italic         = font->italic,
                         .hb_font        = hb_font_create_sub_font(font->hb_font),
                         .size           = font_size,
                         .name           = strdup(font->name),
@@ -280,25 +298,42 @@ font_manager_get_font(struct font_manager *m,
                 return font;
         }
 
-        return NULL;
-}
+        /*
+         * Last resort, we can't find a suitable font with the right
+         * bold/italic properties, so use the first font in the last
+         * that contains the code point regardless of its bold/italic
+         * properties.
+         */
 
-hb_font_t *
-font_manager_get_hb_font(struct font *font)
-{
-        return font->hb_font;
-}
+        font = fallback;
 
-char *
-font_manager_get_font_name(struct font *font)
-{
-        return font->name;
-}
+        if (font->size != font_size) {
+                struct font **head = &font->next;
+                while (*head) head = &(*head)->next;
+                *head = calloc(1, sizeof **head);
+                m->num_font++;
 
-bool
-font_manager_is_font_color(struct font *font)
-{
-        return FT_HAS_COLOR(font->ft_face);
+                **head = (struct font){
+                        .path           = strdup(font->path),
+                        .ft_face        = font->ft_face,
+                        .has_color      = font->has_color,
+                        .is_fixed_width = font->is_fixed_width,
+                        .bold           = bold,
+                        .italic         = italic,
+                        .hb_font        = hb_font_create_sub_font(font->hb_font),
+                        .size           = font_size,
+                        .name           = strdup(font->name),
+                        .next           = NULL,
+                };
+
+                font = *head;
+
+                hb_font_set_scale(font->hb_font,
+                                  font_size * 64,
+                                  font_size * 64);
+        }
+
+        return font;
 }
 
 void
@@ -309,36 +344,29 @@ font_manager_describe_font(struct font *font)
         long bbox_height = ceil((float)(ft_face->bbox.yMax -
                                         ft_face->bbox.yMin) / 64.0);
 
-        print("Describing font \e[31m%s\e[m at %d pt:\n", font->name, font->size);
-        print("\tBBox height:\t%ld\n", bbox_height);
-        print("\tHas color:\t%s\n", font->has_color ? "Yes" : "No");
-        print("\tFixed width:\t%s\n", font->is_fixed_width ? "Yes" : "No");
-        print("\tFull path:\t%s\n", (char *)font->fc_path);
-        print("\tStyle:\t\t%s\n", (char *)ft_face->style_name);
-        print("\tGlyphs:\t\t%ld\n", ft_face->num_glyphs);
+        print(LOG_EVERYTHING, "Describing font \e[31m%s\e[m (%s) at %d pt:\n", font->name, ft_face->style_name, font->size);
+        print(LOG_EVERYTHING, "\tBBox height:\t%ld\n", bbox_height);
+        print(LOG_EVERYTHING, "\tHas color:\t%s\n", font->has_color ? "Yes" : "No");
+        print(LOG_EVERYTHING, "\tIs bold:\t%s\n", font->bold ? "Yes" : "No");
+        print(LOG_EVERYTHING, "\tIs italic:\t%s\n", font->italic ? "Yes" : "No");
+        print(LOG_EVERYTHING, "\tFixed width:\t%s\n", font->is_fixed_width ? "Yes" : "No");
+        print(LOG_EVERYTHING, "\tFull path:\t%s\n", font->path);
+        print(LOG_EVERYTHING, "\tStyle:\t\t%s\n", (char *)ft_face->style_name);
+        print(LOG_EVERYTHING, "\tGlyphs:\t\t%ld\n", ft_face->num_glyphs);
 }
 
 int
 font_manager_show(struct font_manager *m)
 {
-        print("Font manager stats:\n");
-        print("\tFonts loaded:\t%d\n", m->num_font);
+        print(LOG_EVERYTHING, "Font manager stats:\n");
+        print(LOG_EVERYTHING, "\tFonts loaded:\t%d\n", m->num_font);
+
         struct font *font = m->fonts;
+
         while (font) {
                 font_manager_describe_font(font);
                 font = font->next;
         }
+
         return 0;
-}
-
-int
-font_manager_get_font_pt_size(struct font *font)
-{
-        return font->size;
-}
-
-FT_Face
-font_manager_get_font_ft_face(struct font *font)
-{
-        return font->ft_face;
 }

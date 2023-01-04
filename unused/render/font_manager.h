@@ -17,7 +17,23 @@
 #include <harfbuzz/hb.h>
 
 struct font_manager;
-struct font;
+
+struct font {
+        char *path;
+        char *name;
+
+        FT_Face ft_face;
+        hb_font_t *hb_font;
+
+        bool has_color;
+        bool is_fixed_width;
+        bool bold;
+        bool italic;
+
+        int size;
+
+        struct font *next;
+};
 
 struct font_manager *font_manager_create(void);
 int font_manager_init(struct font_manager *m);
@@ -25,17 +41,9 @@ int font_manager_destroy(struct font_manager *m);
 int font_manager_show(struct font_manager *m);
 int font_manager_add_font_from_name(struct font_manager *m, const char *name, int font_size);
 int font_manager_get_sizes(struct font_manager *m, int *cw, int *ch);
-
-/*
- * Functions for retrieving font properties.
- */
-hb_font_t *font_manager_get_hb_font(struct font *font);
-FT_Face font_manager_get_font_ft_face(struct font *font);
-char *font_manager_get_font_name(struct font *font);
-int font_manager_get_font_pt_size(struct font *font);
-bool font_manager_is_font_color(struct font *font);
 void font_manager_describe_font(struct font *font);
-
 struct font *font_manager_get_font(struct font_manager *m,
                                    uint32_t c,
+                                   bool bold,
+                                   bool italic,
                                    int font_size);

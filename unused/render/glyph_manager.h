@@ -61,12 +61,9 @@ struct glyph {
 
         struct font *font;
 
-        uint32_t c[MAX_CODE_POINTS_PER_CELL];
-        unsigned num_code_point;
-
         struct ivec2 size;
         struct ivec2 vertices[6];
-        struct vec2 sprite_coordinates[6];
+        struct ivec2 sprite_coordinates[6];
 };
 
 struct glyph_manager;
@@ -75,7 +72,9 @@ struct glyph_manager *glyph_manager_create(void);
 int glyph_manager_show(struct glyph_manager *m);
 int glyph_manager_init(struct glyph_manager *m);
 int glyph_manager_destroy(struct glyph_manager *m);
-int glyph_manager_add_font_from_name(struct glyph_manager *m, const char *name, int font_size);
+int glyph_manager_add_font_from_name(struct glyph_manager *m,
+                                     const char *name,
+                                     int font_size);
 struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
 struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,

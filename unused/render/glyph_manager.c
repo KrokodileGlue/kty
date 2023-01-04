@@ -116,8 +116,7 @@ glyph_manager_destroy(struct glyph_manager *m)
 /* } */
 
 static struct sprite_map *
-new_sprite_map(struct glyph_manager *m,
-               struct font *font,
+new_sprite_map(struct font *font,
                int id)
 {
         struct sprite_map *map = calloc(1, sizeof *map);
@@ -131,9 +130,9 @@ new_sprite_map(struct glyph_manager *m,
          */
         int width = 256, height = 256;
 
-        int pt_size = font_manager_get_font_pt_size(font);
+        int pt_size = font->size;
 
-        cairo_format_t format = font_manager_is_font_color(font) ?
+        cairo_format_t format = font->has_color ?
                 CAIRO_FORMAT_ARGB32 : CAIRO_FORMAT_A8;
 
         cairo_surface_t *cairo_surface = cairo_image_surface_create(format,
@@ -142,7 +141,7 @@ new_sprite_map(struct glyph_manager *m,
 
         cairo_t *cr = cairo_create(cairo_surface);
 
-        FT_Face ft_face = font_manager_get_font_ft_face(font);
+        FT_Face ft_face = font->ft_face;
         cairo_font_face_t *cairo_face = cairo_ft_font_face_create_for_ft_face(ft_face, 0);
         cairo_set_font_face(cr, cairo_face);
         cairo_set_font_size(cr, pt_size);
@@ -157,13 +156,14 @@ new_sprite_map(struct glyph_manager *m,
                 .cairo_surface = cairo_surface,
                 .cairo_face    = cairo_face,
                 .next_line     = pt_size,
-                .cursor        = { .y = pt_size },
+                .cursor = { TEXTURE_ATLAS_GLYPH_PADDING,
+                            TEXTURE_ATLAS_GLYPH_PADDING },
         };
 
-        print("Sprite map %d:\n", map->id);
-        print("\twidth: %d\n", map->width);
-        print("\theight: %d\n", map->height);
-        print("\tformat: %s\n", map->cairo_format == CAIRO_FORMAT_ARGB32
+        print(LOG_DETAIL, "Sprite map %d:\n", map->id);
+        print(LOG_DETAIL, "\twidth: %d\n", map->width);
+        print(LOG_DETAIL, "\theight: %d\n", map->height);
+        print(LOG_DETAIL, "\tformat: %s\n", map->cairo_format == CAIRO_FORMAT_ARGB32
               ? "CAIRO_FORMAT_ARGB32" : "CAIRO_FORMAT_A8");
 
         return map;
@@ -174,21 +174,22 @@ add_sprite_map(struct glyph_manager *m,
                struct font *font)
 {
         if (!m->sprite_map) {
-                m->capacity_sprite_map = 1;
-                m->sprite_map = calloc(1, sizeof *m->sprite_map);
+                assert(!m->num_sprite_map);
+                m->capacity_sprite_map = 2;
+                m->sprite_map = calloc(m->capacity_sprite_map, sizeof *m->sprite_map);
                 int id = m->num_sprite_map++;
-                return m->sprite_map[id] = new_sprite_map(m, font, id);
+                return m->sprite_map[id] = new_sprite_map(font, id);
         }
 
         if (m->num_sprite_map == m->capacity_sprite_map) {
                 m->capacity_sprite_map *= 2;
                 m->sprite_map = realloc(m->sprite_map, m->capacity_sprite_map * sizeof *m->sprite_map);
                 int id = m->num_sprite_map++;
-                return m->sprite_map[id] = new_sprite_map(m, font, id);
+                return m->sprite_map[id] = new_sprite_map(font, id);
         }
 
         int id = m->num_sprite_map++;
-        return m->sprite_map[id] = new_sprite_map(m, font, id);
+        return m->sprite_map[id] = new_sprite_map(font, id);
 }
 
 static struct sprite_map *
@@ -218,38 +219,73 @@ add_sprite_to_font(struct glyph_manager *m,
         struct sprite_map *map = get_first_unfilled_sprite_map(m, font);
         glyph->glyph_sheet = map->id;
 
-        cairo_glyph_t *cairo_glyphs = cairo_glyph_allocate(1);
+        cairo_glyph_t *cairo_glyphs = calloc(1, sizeof *cairo_glyphs);
 
-        cairo_glyphs[0].index = glyph->id;
+        *cairo_glyphs = (cairo_glyph_t){
+                .index = glyph->id,
+                .x = map->cursor.x,
+                .y = map->cursor.y,
+        };
 
-        if (map->cursor.x + glyph->size.x > map->width
-            || map->cursor.y + glyph->size.y > map->height) {
+        cairo_text_extents_t extents;
+        cairo_glyph_extents(map->cr, cairo_glyphs, 1, &extents);
+
+        if (map->cursor.x + glyph->size.x >= map->width - TEXTURE_ATLAS_GLYPH_PADDING) {
+                map->cursor.y = map->next_line + TEXTURE_ATLAS_GLYPH_PADDING;
+                map->cursor.x = TEXTURE_ATLAS_GLYPH_PADDING;
+        }
+
+        if (map->cursor.y + glyph->size.y > map->height) {
                 map->is_full = true;
-                map = new_sprite_map(m, font, m->num_sprite_map);
+                return add_sprite_to_font(m, font, glyph);
         }
 
-        cairo_glyphs[0].x = map->cursor.x;
-        cairo_glyphs[0].y = map->cursor.y;
+        cairo_glyphs->x -= extents.x_bearing;
+        cairo_glyphs->y -= extents.y_bearing;
 
-        map->cursor.x += glyph->size.x + 1;
+        struct ivec2 sprite_coordinates[6] = {
+                { map->cursor.x                 , map->cursor.y                 },
+                { map->cursor.x + glyph->size.x , map->cursor.y                 },
+                { map->cursor.x                 , map->cursor.y + glyph->size.y },
+                { map->cursor.x                 , map->cursor.y + glyph->size.y },
+                { map->cursor.x + glyph->size.x , map->cursor.y + glyph->size.y },
+                { map->cursor.x + glyph->size.x , map->cursor.y                 },
+        };
 
-        map->next_line = MAX(map->next_line, map->cursor.y + glyph->size.y);
+        assert(sizeof sprite_coordinates == sizeof glyph->sprite_coordinates);
+        memcpy(glyph->sprite_coordinates, sprite_coordinates, sizeof glyph->sprite_coordinates);
 
-        if (map->cursor.x + glyph->size.x > map->width) {
-                map->cursor.y = map->next_line + 1;
-                map->cursor.x = 0;
+        glyph->glyph_sheet = map->id;
+
+        /* Update the cursor for the next sprite. */
+        map->cursor.x += extents.width + TEXTURE_ATLAS_GLYPH_PADDING;
+        map->next_line = MAX(map->next_line, map->cursor.y + extents.height);
+
+        if (map->cursor.x + glyph->size.x >= map->width - TEXTURE_ATLAS_GLYPH_PADDING) {
+                map->cursor.y = map->next_line + TEXTURE_ATLAS_GLYPH_PADDING;
+                map->cursor.x = TEXTURE_ATLAS_GLYPH_PADDING;
         }
-
-        /* TODO: Wrap cursor to next line etc. */
 
         cairo_show_glyphs(map->cr, cairo_glyphs, 1);
 
+        /* TODO: Get rid of this obviously. */
         char buf[100];
-        snprintf(buf, sizeof buf, "output-%s-%d-%d.png",
-                 font_manager_get_font_name(font),
-                 font_manager_get_font_pt_size(font),
+        snprintf(buf, sizeof buf, "%s-%d-%d.png",
+                 font->name,
+                 font->size,
                  map->id);
         cairo_surface_write_to_png(map->cairo_surface, buf);
+
+        static int global = 0;
+        if (global++ == 4) {
+                cairo_surface_t *surface =
+                        cairo_surface_create_for_rectangle(map->cairo_surface,
+                                                           sprite_coordinates[0].x,
+                                                           sprite_coordinates[0].y,
+                                                           sprite_coordinates[4].x - sprite_coordinates[0].x,
+                                                           sprite_coordinates[4].y - sprite_coordinates[0].y);
+                cairo_surface_write_to_png(surface, "a.png");
+        }
 }
 
 /*
@@ -259,17 +295,13 @@ add_sprite_to_font(struct glyph_manager *m,
  */
 static struct glyph *
 look_up_glyph(struct glyph_manager *m,
-              uint32_t *text,
-              unsigned len,
+              int glyph_id,
               bool bold,
               bool italic)
 {
         /* TODO: Use a hash for this lookup. */
         for (unsigned i = 0; i < m->num_glyph; i++) {
-                if (m->glyph[i].num_code_point != len)
-                        continue;
-                if (memcmp(m->glyph[i].c, text, len * sizeof *text))
-                        continue;
+                if (m->glyph[i].id != glyph_id) continue;
                 if (m->glyph[i].bold != bold) continue;
                 if (m->glyph[i].italic != italic) continue;
                 return m->glyph + i;
@@ -309,10 +341,6 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                              bool italic,
                              int font_size)
 {
-        struct glyph *glyph = look_up_glyph(m, text, len, bold, italic);
-        if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
-        glyph = new_glyph(m);
-
         /*
          * Now we have to do the heavy lifting of actually generating
          * all of the glyph information by shaping with Harfbuzz and
@@ -326,19 +354,18 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
          * first character in the sequence and use it for shaping the
          * entire sequence.
          */
-        struct font *font = font_manager_get_font(m->fm, text[0], font_size);
+        struct font *font = font_manager_get_font(m->fm, text[0], bold, italic, font_size);
 
         assert(font);
 
-        char *font_name = font_manager_get_font_name(font);
-        hb_font_t *hb_font = font_manager_get_hb_font(font);
+        char *font_name = font->name;
+        hb_font_t *hb_font = font->hb_font;
 
         assert(hb_font);
 
         uint8_t tmpbuf[10];
         unsigned tmpbuflen;
         utf8encode(text[0], tmpbuf, &tmpbuflen);
-        print("Picking font %s for U+%"PRIX32" (%.*s)\n", font_name, text[0], tmpbuflen, (char *)tmpbuf);
 
         hb_buffer_t *buf = hb_buffer_create();
 
@@ -352,6 +379,10 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(buf, &glyph_count);
 
         assert(glyph_count == 1); /* A cell should only have one glyph */
+
+        struct glyph *glyph = look_up_glyph(m, glyph_info->codepoint, bold, italic);
+        if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
+        glyph = new_glyph(m);
 
         /*
          * At this point we have everything we need to construct the
@@ -374,7 +405,8 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .y = ceil((float)extents.y_bearing / 64.0)
         };
 
-        print("\t-> size: %d,%d / bearing: %d,%d\n", size.x, size.y,
+        print(LOG_EVERYTHING, "Picking font %s for U+%"PRIX32" (%.*s) -> size: %d,%d / bearing: %d,%d\n",
+              font_name, text[0], tmpbuflen, (char *)tmpbuf, size.x, size.y,
               bearing.x, bearing.y);
 
         struct ivec2 vertices[6] = {
@@ -393,18 +425,13 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .bold = bold,
                 .italic = italic,
                 .font = font,
-                /* uint32_t c[MAX_CODE_POINTS_PER_CELL]; */
-                .num_code_point = len,
                 .size = size,
                 /* struct ivec2 vertices[6]; */
                 /* struct vec2 sprite_coordinates[6]; */
         };
 
         assert(sizeof vertices == sizeof glyph->vertices);
-        assert(len * sizeof *text <= sizeof glyph->c);
-
         memcpy(glyph->vertices, vertices, sizeof vertices);
-        memcpy(glyph->c, text, sizeof glyph->c);
 
         add_sprite_to_font(m, font, glyph);
 
@@ -440,16 +467,16 @@ glyph_manager_get_glyph_sheet(struct glyph_manager *m,
 int
 glyph_manager_show(struct glyph_manager *m)
 {
-        print("Glyph manager stats:\n");
-        print("\tGlyphs loaded:\t%d (capacity %d)\n", m->num_glyph, m->capacity_glyph);
-        print("\tSprite maps:\t%d (capacity %d)\n", m->num_sprite_map, m->capacity_sprite_map);
+        print(LOG_DETAIL, "Glyph manager stats:\n");
+        print(LOG_DETAIL, "\tGlyphs loaded:\t%d (capacity %d)\n", m->num_glyph, m->capacity_glyph);
+        print(LOG_DETAIL, "\tSprite maps:\t%d (capacity %d)\n", m->num_sprite_map, m->capacity_sprite_map);
 
         for (unsigned i = 0; i < m->num_glyph; i++) {
                 struct glyph *glyph = m->glyph + i;
-                print("\tGlyph %d in %s (%d pt) (bold=%s, italic=%s)\n",
+                print(LOG_EVERYTHING, "\tGlyph %d in %s (%d pt) (bold=%s, italic=%s)\n",
                       glyph->id,
-                      font_manager_get_font_name(glyph->font),
-                      font_manager_get_font_pt_size(glyph->font),
+                      glyph->font->name,
+                      glyph->font->size,
                       glyph->bold ? "Yes" : "No",
                       glyph->italic ? "Yes" : "No"
                       );
