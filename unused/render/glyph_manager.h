@@ -21,15 +21,17 @@
  * Some notes on vocabulary:
  *
  * A "glyph" is a collection of information related to the display of
- * a single character from a font at a specific size. A glyph contains:
+ * a single renderable thing from a font at a specific size. A glyph
+ * contains:
  *
- * + The position and dimensions of the bounding box
+ * + The position and dimensions of the bounding box (this is used for
+ *   positioning during rendering)
  * + The id of the glyph sheet where the glyph's sprite may be found
  * + The coordinates of the sprite in the sheet
  *
- * Whereas a "sprite" is really just the binary alpha/RGBA data which
- * you can actually use to display the glyph, as its stored in a
- * specific sprite sheet.
+ * A "sprite" is really just the binary alpha/RGBA data which you can
+ * actually use to display the glyph, as its stored in a specific
+ * sprite sheet.
  *
  * In general it would be inconvenient if you just want to ask for the
  * data associated with a glyph to get back a giant sprite sheet and
@@ -74,6 +76,7 @@ struct glyph_manager *glyph_manager_create(void);
 int glyph_manager_init(struct glyph_manager *m);
 int glyph_manager_destroy(struct glyph_manager *m);
 int glyph_manager_show(struct glyph_manager *m);
+
 struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
 struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,

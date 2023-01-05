@@ -19,13 +19,10 @@
 #include <harfbuzz/hb.h>
 
 #include "debug.h"
-#include "font_manager.h"
 #include "glyph_manager.h"
-#include "utf8.h"
+#include "font_manager.h"
 
 struct glyph_manager {
-        struct font_manager *fm;
-
         /* Cairo sprite map for each font */
         struct sprite_map {
                 /*
@@ -71,20 +68,12 @@ glyph_manager_create(void)
 }
 
 /*
- * Initialized the glyph manager.
- *
- * n.b.: This also creates /and initializes/ a font manager, which
- * means that it creates and uses fontconfig objects and performs i/o
- * operations to parse config files. There should only be one glyph
- * manager in the application.
+ * Initializes the glyph manager.
  */
 int
 glyph_manager_init(struct glyph_manager *m)
 {
         memset(m, 0, sizeof *m);
-        m->fm = font_manager_create();
-        if (!m->fm) return 1;
-        if (font_manager_init(m->fm)) return 1;
         return 0;
 }
 
@@ -94,30 +83,14 @@ glyph_manager_init(struct glyph_manager *m)
 int
 glyph_manager_destroy(struct glyph_manager *m)
 {
-        if (font_manager_destroy(m->fm)) {
-                perror("font_manager_destroy");
-                return 1;
-        }
-
         for (unsigned i = 0; i < m->num_sprite_map; i++)
                 cairo_surface_destroy(m->sprite_map[i]->cairo_surface);
 
         return 0;
 }
 
-/* static void */
-/* initialize_sprite_map(struct glyph_manager *m, */
-/*                       struct sprite_map *map, */
-/*                       struct font *font, */
-/*                       int font_size) */
-/* { */
-/*         map->font = font; */
-
-/* } */
-
 static struct sprite_map *
-new_sprite_map(struct font *font,
-               int id)
+new_sprite_map(struct font *font, int id)
 {
         struct sprite_map *map = calloc(1, sizeof *map);
 
@@ -156,8 +129,10 @@ new_sprite_map(struct font *font,
                 .cairo_surface = cairo_surface,
                 .cairo_face    = cairo_face,
                 .next_line     = pt_size,
-                .cursor = { TEXTURE_ATLAS_GLYPH_PADDING,
-                            TEXTURE_ATLAS_GLYPH_PADDING },
+                .cursor = {
+                        TEXTURE_ATLAS_GLYPH_PADDING,
+                        TEXTURE_ATLAS_GLYPH_PADDING
+                },
         };
 
         print(LOG_DETAIL, "Sprite map %d:\n", map->id);
@@ -397,14 +372,6 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         return glyph;
 }
 
-int
-glyph_manager_add_font_from_name(struct glyph_manager *m,
-                                 const char *name,
-                                 int font_size)
-{
-        return font_manager_add_font_from_name(m->fm, name, font_size);
-}
-
 /*
  * Retrieves useful information about a specific glyph sheet from the
  * glyph sheet id.
@@ -441,6 +408,5 @@ glyph_manager_show(struct glyph_manager *m)
                       );
         }
 
-        /* font_manager_show(m->fm); */
         return 0;
 }
