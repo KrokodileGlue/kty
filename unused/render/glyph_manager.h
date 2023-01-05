@@ -56,6 +56,8 @@ struct glyph {
         int index;              /* The index of this glyph */
         int glyph_sheet;        /* The id of the glyph sheet */
 
+        int pt_size;
+
         bool bold;
         bool italic;
 
@@ -76,4 +78,5 @@ struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
 struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,
                                            struct font *font,
-                                           int glyph_id);
+                                           int glyph_id,
+                                           int font_size);

@@ -43,7 +43,8 @@ int font_manager_add_font_from_name(struct font_manager *m, const char *name, in
 int font_manager_get_sizes(struct font_manager *m, int *cw, int *ch);
 void font_manager_describe_font(struct font *font);
 struct font *font_manager_get_font(struct font_manager *m,
-                                   uint32_t c,
+                                   uint32_t *seq,
+                                   unsigned len,
                                    bool bold,
                                    bool italic,
                                    int font_size);

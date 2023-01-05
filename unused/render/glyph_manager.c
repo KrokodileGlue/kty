@@ -207,7 +207,8 @@ get_first_unfilled_sprite_map(struct glyph_manager *m,
 static void
 add_sprite_to_font(struct glyph_manager *m,
                    struct font *font,
-                   struct glyph *glyph)
+                   struct glyph *glyph,
+                   int pt_size)
 {
         /*
          * First look for an unfilled sprite sheet and try to insert
@@ -218,6 +219,8 @@ add_sprite_to_font(struct glyph_manager *m,
 
         struct sprite_map *map = get_first_unfilled_sprite_map(m, font);
         glyph->glyph_sheet = map->id;
+
+        cairo_set_font_size(map->cr, pt_size);
 
         cairo_glyph_t *cairo_glyphs = calloc(1, sizeof *cairo_glyphs);
 
@@ -237,7 +240,7 @@ add_sprite_to_font(struct glyph_manager *m,
 
         if (map->cursor.y + glyph->size.y > map->height) {
                 map->is_full = true;
-                return add_sprite_to_font(m, font, glyph);
+                return add_sprite_to_font(m, font, glyph, pt_size);
         }
 
         cairo_glyphs->x -= extents.x_bearing;
@@ -278,7 +281,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_surface_write_to_png(map->cairo_surface, buf);
 
         static int global = 0;
-        if (global++ == 93) {
+        if (global++ == 0) {
                 cairo_surface_t *surface =
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
@@ -296,12 +299,14 @@ add_sprite_to_font(struct glyph_manager *m,
 static struct glyph *
 look_up_glyph(struct glyph_manager *m,
               struct font *font,
-              int glyph_id)
+              int glyph_id,
+              int pt_size)
 {
         /*
          * TODO: Use a hash for this lookup.
          */
         for (unsigned i = 0; i < m->num_glyph; i++) {
+                if (m->glyph[i].pt_size != pt_size) continue;
                 if (m->glyph[i].font != font) continue;
                 if (m->glyph[i].id != glyph_id) continue;
                 return m->glyph + i;
@@ -336,13 +341,16 @@ new_glyph(struct glyph_manager *m)
 struct glyph *
 glyph_manager_generate_glyph(struct glyph_manager *m,
                              struct font *font,
-                             int glyph_id)
+                             int glyph_id,
+                             int font_size)
 {
         hb_font_t *hb_font = font->hb_font;
 
+        hb_font_set_scale(font->hb_font, font_size * 64, font_size * 64);
+
         assert(hb_font);
 
-        struct glyph *glyph = look_up_glyph(m, font, glyph_id);
+        struct glyph *glyph = look_up_glyph(m, font, glyph_id, font_size);
         if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
         glyph = new_glyph(m);
 
@@ -372,6 +380,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .id = glyph_id,
                 .index = glyph - m->glyph,
                 /* int glyph_sheet; */
+                .pt_size = font_size,
                 .bold = font->bold,
                 .italic = font->italic,
                 .font = font,
@@ -383,7 +392,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         assert(sizeof vertices == sizeof glyph->vertices);
         memcpy(glyph->vertices, vertices, sizeof vertices);
 
-        add_sprite_to_font(m, font, glyph);
+        add_sprite_to_font(m, font, glyph, font_size);
 
         return glyph;
 }

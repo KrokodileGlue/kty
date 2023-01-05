@@ -17,17 +17,54 @@ show_glyphs(struct layout_engine *e, uint32_t *c, unsigned len_c, int size)
          * manager.
          */
 
-        struct cpu_cell *cells = malloc(len_c * sizeof *cells);
+        struct cpu_cell *cells = malloc((len_c + 15) * sizeof *cells);
 
         for (unsigned i = 0; i < len_c; i++)
                 cells[i] = (struct cpu_cell){
                         .c = { c[i] },
                         .num_code_point = 1,
-                        .fg = 1,
-                        .bg = 1,
-                        .bold = rand() % 2,
-                        .italic = rand() % 2,
+                        .bold = i % 2,
                 };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 0x1f914 },
+                .num_code_point = 1,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 0x1F3F4, 0x200D, 0x2620, 0xFE0F },
+                .num_code_point = 4,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 0x1F469, 0x1F3FB, 0x200D, 0x2764, 0xFE0F, 0x200D, 0x1F48B, 0x200D, 0x1F468, 0x1F3FB },
+                .num_code_point = 10,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 0x1f914 },
+                .num_code_point = 1,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { ' ' },
+                .num_code_point = 1,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 'e', 0x301 },
+                .num_code_point = 2,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { 'e', 0x301 },
+                .num_code_point = 2,
+        };
+
+        cells[len_c++] = (struct cpu_cell){
+                .c = { ' ' },
+                .num_code_point = 1,
+        };
 
         unsigned len;
         struct glyph **glyph = layout(e, cells, len_c, size, &len);
@@ -51,7 +88,7 @@ show_glyphs(struct layout_engine *e, uint32_t *c, unsigned len_c, int size)
 
 int main(void)
 {
-        srand(0);
+        srand(time(0));
 
         struct layout_engine *e = layout_engine_create();
 
@@ -61,10 +98,10 @@ int main(void)
         }
 
         char *pattern[] = {
-                "Fira Code:regular",
-                "Fira Code:bold",
-                "Fira Code:italic",
-                "Fira Code:bold:italic",
+                "monospace:regular",
+                "monospace:bold",
+                "monospace:italic",
+                "monospace:bold:italic",
                 "emoji",
                 "Noto Serif CJK JP",
         };
@@ -89,7 +126,7 @@ int main(void)
         c[num_c++] = '>';
         c[num_c++] = ' ';
 
-        show_glyphs(e, c, num_c, 24);
+        show_glyphs(e, c, num_c, 36);
 
         layout_engine_show(e);
 

@@ -185,6 +185,16 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
         return 0;
 }
 
+static bool
+font_has_glyph_for_sequence(struct font *font,
+                            uint32_t *utf32, unsigned len)
+{
+        return hb_font_get_glyph(font->hb_font,
+                                 utf32[0],
+                                 0,
+                                 &(hb_codepoint_t){0});
+}
+
 /*
  * Get the first font in the fallback hierarchy which contains the
  * code point `c`.
@@ -201,85 +211,48 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
  */
 struct font *
 font_manager_get_font(struct font_manager *m,
-                      uint32_t c,
+                      uint32_t *seq,
+                      unsigned len,
                       bool bold,
                       bool italic,
                       int font_size)
 {
-        struct font *font = m->fonts;
-
         /*
-         * The plan for supporting ZWJ sequences is to store the list
-         * of code points in each cell. We're going to assume that a
-         * ZWJ sequence never joins two code points from different
-         * scripts -- that way when we're dividing a line into runs we
-         * can just check the font of the first character in a cell's
-         * sequence.
+         * We might care about `font_size` for bitmap fonts but for
+         * the scalable fonts I use it's not really an issue.
+         *
+         * Before you render a font returned by this function you
+         * always need to set its scale manually.
          */
+        (void)font_size;
+
+        struct font *font = m->fonts, *fallback = NULL;
+
         while (font) {
                 /*
                  * If the font doesn't contain a glyph for the code
                  * point continue.
                  */
-                hb_codepoint_t glyph_id;
-
-                if (!hb_font_get_glyph(font->hb_font, c, 0, &glyph_id)
-                    || font->size != font_size
-                    || font->bold != bold
-                    || font->italic != italic) {
+                if (!font_has_glyph_for_sequence(font, seq, len)) {
                         font = font->next;
                         continue;
                 }
 
-                return font;
-        }
-
-        font = m->fonts;
-        struct font *fallback = NULL;
-
-        while (font) {
-                hb_codepoint_t glyph_id;
-
-                if (!hb_font_get_glyph(font->hb_font, c, 0, &glyph_id)) {
+                if (font->bold != bold || font->italic != italic) {
+                        fallback = font;
                         font = font->next;
                         continue;
                 }
 
-                if (font->bold != bold) {
-                        if (!fallback) fallback = font;
-                        font = font->next;
-                        continue;
-                }
+                static char buf[1000];
 
-                if (font->italic != italic) {
-                        if (!fallback) fallback = font;
-                        font = font->next;
-                        continue;
-                }
+                buf[0] = 0;
 
-                struct font **head = &font->next;
-                while (*head) head = &(*head)->next;
-                *head = calloc(1, sizeof **head);
-                m->num_font++;
+                for (unsigned i = 0; i < len; i++)
+                        snprintf(buf + strlen(buf), sizeof buf -
+                                 strlen(buf), "U+%"PRIX32" ", seq[i]);
 
-                **head = (struct font){
-                        .path           = strdup(font->path),
-                        .ft_face        = font->ft_face,
-                        .has_color      = font->has_color,
-                        .is_fixed_width = font->is_fixed_width,
-                        .bold           = font->bold,
-                        .italic         = font->italic,
-                        .hb_font        = hb_font_create_sub_font(font->hb_font),
-                        .size           = font_size,
-                        .name           = strdup(font->name),
-                        .next           = NULL,
-                };
-
-                font = *head;
-
-                hb_font_set_scale(font->hb_font,
-                                  font_size * 64,
-                                  font_size * 64);
+                print(LOG_EVERYTHING, "Picking font %s for sequence %s\n", font->name, buf);
 
                 return font;
         }
@@ -293,30 +266,12 @@ font_manager_get_font(struct font_manager *m,
 
         font = fallback;
 
-        if (font->size != font_size) {
-                struct font **head = &font->next;
-                while (*head) head = &(*head)->next;
-                *head = calloc(1, sizeof **head);
-                m->num_font++;
-
-                **head = (struct font){
-                        .path           = strdup(font->path),
-                        .ft_face        = font->ft_face,
-                        .has_color      = font->has_color,
-                        .is_fixed_width = font->is_fixed_width,
-                        .bold           = bold,
-                        .italic         = italic,
-                        .hb_font        = hb_font_create_sub_font(font->hb_font),
-                        .size           = font_size,
-                        .name           = strdup(font->name),
-                        .next           = NULL,
-                };
-
-                font = *head;
-
-                hb_font_set_scale(font->hb_font,
-                                  font_size * 64,
-                                  font_size * 64);
+        if (!font) {
+                static char buf[1000];
+                buf[0] = 0;
+                for (unsigned i = 0; i < len; i++)
+                        snprintf(buf + strlen(buf), sizeof buf - strlen(buf), "U+%"PRIX32" ", seq[i]);
+                print(LOG_DETAIL, "\e[31mNo font for sequence %s\e[m\n", buf);
         }
 
         return font;
