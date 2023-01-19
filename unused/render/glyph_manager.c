@@ -101,7 +101,7 @@ new_sprite_map(struct font *font, int id)
          * the maximum texture size and set that on the glyph
          * manager.
          */
-        int width = 256, height = 256;
+        int width = 512, height = 512;
 
         int pt_size = font->size;
 
@@ -256,7 +256,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_surface_write_to_png(map->cairo_surface, buf);
 
         static int global = 0;
-        if (global++ == 0) {
+        if (global++ == 131) {
                 cairo_surface_t *surface =
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
@@ -399,7 +399,8 @@ glyph_manager_show(struct glyph_manager *m)
 
         for (unsigned i = 0; i < m->num_glyph; i++) {
                 struct glyph *glyph = m->glyph + i;
-                print(LOG_EVERYTHING, "\tGlyph %d in %s (%d pt) (bold=%s, italic=%s)\n",
+                print(LOG_EVERYTHING, "\t%u - Glyph %d in %s (%d pt) (bold=%s, italic=%s)\n",
+                      i,
                       glyph->id,
                       glyph->font->name,
                       glyph->font->size,

@@ -15,12 +15,13 @@ int main(void)
         if (!e) return 1;
 
         char *pattern[] = {
-                "monospace:regular",
-                "monospace:bold",
-                "monospace:italic",
-                "monospace:bold:italic",
+                "Fira Code:regular",
+                "Fira Code:bold",
+                "Fira Code:italic",
+                "Fira Code:bold:italic",
                 "emoji",
                 "Noto Serif CJK JP",
+                "Noto Sans Arabic",
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
@@ -77,10 +78,67 @@ int main(void)
         };
 
         cells[n++] = (struct cpu_cell){
-                .c = { ' ', 0x301 },
+                .c = { ' ' },
                 .num_code_point = 1,
         };
 
+        cells[n++] = (struct cpu_cell){
+                .c = { '-' },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { '>' },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { ' ' },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { '<' },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { '=' },
+                .num_code_point = 1,
+        };
+
+        /* cells[n++] = (struct cpu_cell){ */
+        /*         .c = { 0x26FB }, */
+        /*         .num_code_point = 1, */
+        /* }; */
+
+        cells[n++] = (struct cpu_cell){
+                .c = { ' ' },
+                .num_code_point = 1,
+        };
+
+        for (unsigned i = 0; i < 40; i++)
+                cells[n++] = (struct cpu_cell){
+                        .c = { 0x30ab + i * 2 },
+                        .num_code_point = 1,
+                };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { 0x627 },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { 0x628 },
+                .num_code_point = 1,
+        };
+
+        cells[n++] = (struct cpu_cell){
+                .c = { 0x67a },
+                .num_code_point = 1,
+        };
+
+        /* ابٺ */
         /*
          * Recommended Emoji ZWJ Sequence 1145
          * https://unicode.org/emoji/charts/emoji-zwj-sequences.html
@@ -102,7 +160,7 @@ int main(void)
 
         struct glyph **glyphs = calloc(n, sizeof *glyphs);
 
-        layout(e, cells, glyphs, n, 24);
+        layout(e, cells, glyphs, n, 70);
 
         layout_engine_show(e);
 
