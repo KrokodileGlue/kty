@@ -1,8 +1,8 @@
-# kty
+* kty
 
 This work is licensed under the terms of the GPLv2.
 
-# TODO
+** TODO
 
 + Finish windows
 + Add scrollback
@@ -65,3 +65,7 @@ Script ideas:
 
 + File transfer
 + Screenshot tool
+
+** Notes
+
+This [[https://lists.freedesktop.org/archives/harfbuzz/2015-August/005003.html][email]] is helpful.
