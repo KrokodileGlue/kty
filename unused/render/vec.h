@@ -2,7 +2,7 @@
 
 /*
  * vec.h
- * Copyright (C) 2022 Taylor West
+ * Copyright (C) 2023 Taylor West
  */
 
 #pragma once

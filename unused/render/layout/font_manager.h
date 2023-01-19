@@ -2,7 +2,7 @@
 
 /*
  * font_manager.h
- * Copyright (C) 2022 Taylor West
+ * Copyright (C) 2023 Taylor West
  *
  * This file contains data structure and function declarations
  * exposing a public API for the management of font data.

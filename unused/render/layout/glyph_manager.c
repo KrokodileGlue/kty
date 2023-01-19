@@ -2,7 +2,7 @@
 
 /*
  * glyph_manager.c
- * Copyright (C) 2022 Taylor West
+ * Copyright (C) 2023 Taylor West
  *
  * This file contains data structures and functions related to the
  * management of glyphs.
