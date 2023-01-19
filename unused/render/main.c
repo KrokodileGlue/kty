@@ -13,7 +13,11 @@ int main(int argc, char **argv)
 
         if (!glfwInit()) return 1;
 
-        GLFWwindow *window = glfwCreateWindow(300, 300, argv[0], 0, 0);
+        int width = 800, height = 602;
+        int cw = 14, ch = 24;
+        int col = width / cw, row = height / ch;
+
+        GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
         if (!window) {
                 glfwTerminate();
                 exit(1);
@@ -101,12 +105,12 @@ int main(int argc, char **argv)
         struct vec2 { float x, y; };
 
         struct vec2 vertices[] = {
-                { -0.05f,  0.05f },
-                { 0.05f, -0.05f },
-                { -0.05f, -0.05f },
-                { -0.05f,  0.05f },
-                { 0.05f, -0.05f },
-                { 0.05f,  0.05f },
+                { 0, 1 },
+                { 1, 0 },
+                { 0, 0 },
+                { 0, 1 },
+                { 1, 0 },
+                { 1, 1 },
         };
 
         unsigned VBO;
@@ -121,24 +125,33 @@ int main(int argc, char **argv)
         glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof *vertices, 0);
 
-        int index = 0;
+        /* int index = 0; */
 
-        for (int y = -10; y < 10; y += 2) {
-                for (int x = -10; x < 10; x += 2) {
-                        char tmp[1000];
-                        snprintf(tmp, sizeof tmp, "offsets[%d]", index++);
-                        glUniform2f(glGetUniformLocation(program, tmp),
-                                    (float)x / 10.0f + 0.1,
-                                    (float)y / 10.0f + 0.1);
-                }
-        }
+        /* for (int y = -10; y < 10; y += 2) { */
+        /*         for (int x = -10; x < 10; x += 2) { */
+        /*                 char tmp[1000]; */
+        /*                 snprintf(tmp, sizeof tmp, "offsets[%d]", index++); */
+        /*                 glUniform2f(glGetUniformLocation(program, tmp), */
+        /*                             (float)x / 10.0f + 0.1, */
+        /*                             (float)y / 10.0f + 0.1); */
+        /*         } */
+        /* } */
+
+        glUniform1i(glGetUniformLocation(program, "width"), width);
+        glUniform1i(glGetUniformLocation(program, "height"), height);
+
+        glUniform1i(glGetUniformLocation(program, "cw"), cw);
+        glUniform1i(glGetUniformLocation(program, "ch"), ch);
+
+        glUniform1i(glGetUniformLocation(program, "col"), col);
+        glUniform1i(glGetUniformLocation(program, "row"), row);
 
         /* Begin the main loop. */
 
         glfwSwapBuffers(window);
 
         while (!glfwWindowShouldClose(window)) {
-                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, 100);
+                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, row * col);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
