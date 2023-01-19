@@ -3,18 +3,58 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <math.h>
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+
+#include "layout/layout_engine.h"
+#include "layout/debug.h"
+
+enum debug_level debug_level = LOG_EVERYTHING;
 
 int main(int argc, char **argv)
 {
         (void)argc;
 
+        struct layout_engine *e = layout_engine_create();
+        if (!e) return 1;
+
+        char *pattern[] = {
+                "Fira Code:regular",
+                "Fira Code:bold",
+                "Fira Code:italic",
+                "Fira Code:bold:italic",
+                "emoji",
+                "Noto Serif CJK JP",
+                "Noto Sans Arabic",
+        };
+
+        for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
+                if (layout_engine_add_font_from_name(e, pattern[i], 12)) {
+                        fprintf(stderr, "Couldn't load font %s\n", pattern[i]);
+                        return 1;
+                }
+
+        struct cpu_cell *cells = calloc(1000, sizeof *cells);
+        unsigned num_glyph = 0;
+
+        /* Add all printable ASCII characters. */
+        for (int i = 33; i <= 126; i++)
+                cells[num_glyph++] = (struct cpu_cell){
+                        .c = { i },
+                        .num_code_point = 1,
+                };
+
+        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
+
+        layout(e, cells, glyphs, num_glyph, 24);
+        layout_engine_show(e);
+
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 14, ch = 24;
+        int cw = 18, ch = 28;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -42,11 +82,11 @@ int main(int argc, char **argv)
         /* Start setting up the renderer. */
 
         /* Compile shaders. */
-        char *buf = malloc(1000);
+        char *buf = malloc(10000);
 
         /* Vertex shader. */
         int fd = open("vertex.glsl", O_RDONLY);
-        int n = read(fd, buf, 1000);
+        int n = read(fd, buf, 10000);
         buf[n] = 0;
         close(fd);
 
@@ -67,7 +107,7 @@ int main(int argc, char **argv)
 
         /* Fragment shader. */
         fd = open("fragment.glsl", O_RDONLY);
-        n = read(fd, buf, 1000);
+        n = read(fd, buf, 10000);
         buf[n] = 0;
         close(fd);
 
@@ -104,6 +144,14 @@ int main(int argc, char **argv)
 
         struct vec2 { float x, y; };
 
+        /*  1,4   6
+         *   +---+
+         *   |   |
+         *   |   |
+         *   +---+
+         *  3     2,5
+         *
+          */
         struct vec2 vertices[] = {
                 { 0, 1 },
                 { 1, 0 },
@@ -137,6 +185,23 @@ int main(int argc, char **argv)
         /*         } */
         /* } */
 
+        struct glyph_manager *m = layout_engine_get_glyph_manager(e);
+
+        /* There's only one glyph sheet. */
+        struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, 0);
+
+        printf("%d, %d\n", sheet.width, sheet.height);
+
+        unsigned texture;
+        glGenTextures(1, &texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, sheet.width, sheet.height,
+                     0, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
+
         glUniform1i(glGetUniformLocation(program, "width"), width);
         glUniform1i(glGetUniformLocation(program, "height"), height);
 
@@ -146,12 +211,38 @@ int main(int argc, char **argv)
         glUniform1i(glGetUniformLocation(program, "col"), col);
         glUniform1i(glGetUniformLocation(program, "row"), row);
 
+        glUniform1i(glGetUniformLocation(program, "spritemap"), 0);
+
+        for (unsigned i = 0; i < num_glyph; i++) {
+                char tmp[1000];
+                snprintf(tmp, sizeof tmp, "glyph_vertex[%d]", i);
+                glUniform4f(glGetUniformLocation(program, tmp),
+                            (float)(glyphs[i].vertices[4].x - glyphs[i].vertices[0].x) / (float)cw,
+                            (float)(glyphs[i].vertices[0].y - glyphs[i].vertices[4].y) / (float)ch,
+                            (float)glyphs[i].vertices[4].x / (float)cw,
+                            (float)glyphs[i].vertices[0].y / (float)ch);
+                snprintf(tmp, sizeof tmp, "glyph_texcoords[%d]", i);
+                glUniform4f(glGetUniformLocation(program, tmp),
+                            (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
+                            (float)glyphs[i].sprite_coordinates[4].y / (float)sheet.height,
+                            (float)glyphs[i].sprite_coordinates[4].x / (float)sheet.width,
+                            (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
+                /* printf("%f, %f\n", */
+                /*        (float)glyphs[i].vertices[0].x / (float)cw, */
+                /*        (float)glyphs[i].vertices[0].y / (float)ch); */
+                printf("%f, %f\n",
+                       (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
+                       (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
+        }
+
+
         /* Begin the main loop. */
 
         glfwSwapBuffers(window);
 
         while (!glfwWindowShouldClose(window)) {
-                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, row * col);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 6, num_glyph);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }

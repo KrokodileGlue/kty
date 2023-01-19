@@ -1,9 +1,13 @@
 #version 330 core
 
 in vec3 out_color;
+in vec2 out_tex_coords;
+
 out vec4 FragColor;
+
+uniform sampler2D spritemap;
 
 void main()
 {
-        FragColor = vec4(out_color, 1.0);
+        FragColor = texture(spritemap, out_tex_coords);
 }

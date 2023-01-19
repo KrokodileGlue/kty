@@ -79,7 +79,7 @@ int glyph_manager_show(struct glyph_manager *m);
 
 struct glyph_sheet glyph_manager_get_glyph_sheet(struct glyph_manager *m,
                                                  int glyph_sheet);
-struct glyph *glyph_manager_generate_glyph(struct glyph_manager *m,
-                                           struct font *font,
-                                           int glyph_id,
-                                           int font_size);
+struct glyph glyph_manager_generate_glyph(struct glyph_manager *m,
+                                          struct font *font,
+                                          int glyph_id,
+                                          int font_size);

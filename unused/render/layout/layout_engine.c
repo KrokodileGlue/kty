@@ -64,7 +64,7 @@ layout_engine_add_font_from_name(struct layout_engine *e,
  */
 static void
 do_run(struct layout_engine *e, struct font *font,
-       struct glyph **glyphs, unsigned *len,
+       struct glyph *glyphs, unsigned *len,
        struct cpu_cell *a, unsigned num,
        int pt_size)
 {
@@ -134,7 +134,7 @@ do_run(struct layout_engine *e, struct font *font,
  */
 int
 layout(struct layout_engine *e, struct cpu_cell *cells,
-       struct glyph **glyphs, unsigned num_cells, int pt_size)
+       struct glyph *glyphs, unsigned num_cells, int pt_size)
 {
         struct cpu_cell *a = cells, *b = cells;
         struct font *font_b = NULL, *font_a = FONT_FOR_CELL(a);
@@ -187,4 +187,10 @@ layout_engine_destroy(struct layout_engine *e)
 {
         return glyph_manager_destroy(e->gm)
                 || font_manager_destroy(e->fm);
+}
+
+struct glyph_manager *
+layout_engine_get_glyph_manager(struct layout_engine *e)
+{
+        return e->gm;
 }

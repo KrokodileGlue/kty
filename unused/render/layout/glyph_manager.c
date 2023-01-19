@@ -256,7 +256,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_surface_write_to_png(map->cairo_surface, buf);
 
         static int global = 0;
-        if (global++ == 131) {
+        if (global++ == 1) {
                 cairo_surface_t *surface =
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
@@ -313,7 +313,7 @@ new_glyph(struct glyph_manager *m)
  * the code points; it also needs information about attributes like
  * bold/italic which are contained in the cpu cell.
  */
-struct glyph *
+struct glyph
 glyph_manager_generate_glyph(struct glyph_manager *m,
                              struct font *font,
                              int glyph_id,
@@ -326,7 +326,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         assert(hb_font);
 
         struct glyph *glyph = look_up_glyph(m, font, glyph_id, font_size);
-        if (glyph) return glyph; /* If the glyph already exists then we can just return it. */
+        if (glyph) return *glyph; /* If the glyph already exists then we can just return it. */
         glyph = new_glyph(m);
 
         hb_glyph_extents_t extents;
@@ -367,9 +367,12 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         assert(sizeof vertices == sizeof glyph->vertices);
         memcpy(glyph->vertices, vertices, sizeof vertices);
 
+        printf("%d %d\n", glyph->vertices[0].x, glyph->vertices[0].y);
+        printf("%d %d\n\n", glyph->vertices[4].x, glyph->vertices[4].y);
+
         add_sprite_to_font(m, font, glyph, font_size);
 
-        return glyph;
+        return *glyph;
 }
 
 /*
