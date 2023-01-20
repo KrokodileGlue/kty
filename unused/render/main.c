@@ -22,12 +22,12 @@ int main(int argc, char **argv)
 
         char *pattern[] = {
                 "monospace:regular",
-                "monospace:bold",
-                "monospace:italic",
-                "monospace:bold:italic",
-                "emoji",
-                "Noto Serif CJK JP",
-                "Noto Sans Arabic",
+                /* "monospace:bold", */
+                /* "monospace:italic", */
+                /* "monospace:bold:italic", */
+                /* "emoji", */
+                /* "Noto Serif CJK JP", */
+                /* "Noto Sans Arabic", */
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
@@ -51,15 +51,15 @@ int main(int argc, char **argv)
                 .num_code_point = 1,
         };
 
-        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
+        struct gpu_cell *gcells = calloc(num_glyph, sizeof *gcells);
 
-        layout(e, cells, glyphs, num_glyph, 48);
+        layout(e, cells, gcells, num_glyph, 48);
         layout_engine_show(e);
 
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 32, ch = 52;
+        int cw = 28, ch = 48;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -177,24 +177,10 @@ int main(int argc, char **argv)
         glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof *vertices, 0);
 
-        /* int index = 0; */
-
-        /* for (int y = -10; y < 10; y += 2) { */
-        /*         for (int x = -10; x < 10; x += 2) { */
-        /*                 char tmp[1000]; */
-        /*                 snprintf(tmp, sizeof tmp, "offsets[%d]", index++); */
-        /*                 glUniform2f(glGetUniformLocation(program, tmp), */
-        /*                             (float)x / 10.0f + 0.1, */
-        /*                             (float)y / 10.0f + 0.1); */
-        /*         } */
-        /* } */
-
         struct glyph_manager *m = layout_engine_get_glyph_manager(e);
 
         /* There's only one glyph sheet. */
         struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, 0);
-
-        printf("%d, %d\n", sheet.width, sheet.height);
 
         unsigned texture;
         glGenTextures(1, &texture);
@@ -219,24 +205,19 @@ int main(int argc, char **argv)
 
         for (unsigned i = 0; i < num_glyph; i++) {
                 char tmp[1000];
+                snprintf(tmp, sizeof tmp, "glyph_position[%d]", i);
+                glUniform2i(glGetUniformLocation(program, tmp), gcells[i].position.x, gcells[i].position.y);
+                printf("%d %d\n", gcells[i].position.x, gcells[i].position.y);
                 snprintf(tmp, sizeof tmp, "glyph_vertex[%d]", i);
-                glUniform4f(glGetUniformLocation(program, tmp),
-                            (float)(glyphs[i].vertices[4].x - glyphs[i].vertices[0].x) / (float)cw,
-                            (float)(glyphs[i].vertices[0].y - glyphs[i].vertices[4].y) / (float)ch,
-                            (float)glyphs[i].vertices[4].x / (float)cw,
-                            (float)glyphs[i].vertices[0].y / (float)ch);
+                glUniform2f(glGetUniformLocation(program, tmp),
+                            (float)gcells[i].size.x / (float)cw,
+                            -(float)gcells[i].size.y / (float)ch);
                 snprintf(tmp, sizeof tmp, "glyph_texcoords[%d]", i);
                 glUniform4f(glGetUniformLocation(program, tmp),
-                            (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
-                            (float)glyphs[i].sprite_coordinates[4].y / (float)sheet.height,
-                            (float)glyphs[i].sprite_coordinates[4].x / (float)sheet.width,
-                            (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
-                /* printf("%f, %f\n", */
-                /*        (float)glyphs[i].vertices[0].x / (float)cw, */
-                /*        (float)glyphs[i].vertices[0].y / (float)ch); */
-                printf("%f, %f\n",
-                       (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
-                       (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
+                            (float)gcells[i].texture_coordinates[0].x / (float)sheet.width,
+                            (float)gcells[i].texture_coordinates[1].y / (float)sheet.height,
+                            (float)gcells[i].texture_coordinates[1].x / (float)sheet.width,
+                            (float)gcells[i].texture_coordinates[0].y / (float)sheet.height);
         }
 
         glEnable(GL_BLEND);

@@ -7,6 +7,7 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <harfbuzz/hb-ft.h>
 
 #include "debug.h"
 #include "layout_engine.h"
@@ -64,7 +65,7 @@ layout_engine_add_font_from_name(struct layout_engine *e,
  */
 static void
 do_run(struct layout_engine *e, struct font *font,
-       struct glyph *glyphs, unsigned *len,
+       struct gpu_cell *gcells, unsigned *len,
        struct cpu_cell *a, unsigned num,
        int pt_size)
 {
@@ -81,9 +82,8 @@ do_run(struct layout_engine *e, struct font *font,
         uint32_t utf32[num * MAX_CODE_POINTS_PER_CELL];
 
         /*
-         * This is what bugs me the most about this system; it
-         * requires a data transformation from the text to a flat
-         * array of code points.
+         * TODO: Don't shove it all into one buffer, just make
+         * multiple calls to `hb_buffer_add_utf32`!
          */
         unsigned index = 0;
         for (unsigned i = 0; i < num; i++)
@@ -111,10 +111,31 @@ do_run(struct layout_engine *e, struct font *font,
         unsigned glyph_count;
         hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(buf, &glyph_count);
 
-        for (unsigned i = 0; i < glyph_count; i++)
-                glyphs[(*len)++] = glyph_manager_generate_glyph(e->gm, font, glyph_info[i].codepoint, pt_size);
-}
+        FT_Face face = font->ft_face;
 
+        for (unsigned i = 0; i < glyph_count; i++) {
+                struct glyph glyph = glyph_manager_generate_glyph(e->gm, font, glyph_info[i].codepoint, pt_size);
+
+                FT_Load_Glyph(face, glyph_info[i].codepoint, FT_LOAD_DEFAULT);
+                FT_GlyphSlot slot = face->glyph;
+
+                gcells[(*len)++] = (struct gpu_cell){
+                        .position = (struct ivec2){
+                                .x = slot->bitmap_left,
+                                .y = slot->bitmap_top,
+                        },
+                        .size = glyph.size,
+                        .texture_coordinates = {
+                                /* TODO: Just store only these ones from the beginning! */
+                                glyph.sprite_coordinates[0],
+                                glyph.sprite_coordinates[4],
+                        },
+                        .tex = glyph.glyph_sheet,
+                        .fg = (struct vec3){ 0, 0, 0 },
+                        .bg = (struct vec3){ 0, 0, 0 },
+                };
+        }
+}
 
 #define FONT_FOR_CELL(x)                                                \
         font_manager_get_font(e->fm, (x)->c, (x)->num_code_point,       \
@@ -134,7 +155,7 @@ do_run(struct layout_engine *e, struct font *font,
  */
 int
 layout(struct layout_engine *e, struct cpu_cell *cells,
-       struct glyph *glyphs, unsigned num_cells, int pt_size)
+       struct gpu_cell *gcells, unsigned num_cells, int pt_size)
 {
         struct cpu_cell *a = cells, *b = cells;
         struct font *font_b = NULL, *font_a = FONT_FOR_CELL(a);
@@ -161,13 +182,13 @@ layout(struct layout_engine *e, struct cpu_cell *cells,
                         continue;
                 }
 
-                do_run(e, font_a, glyphs, &index, a, b - a, pt_size);
+                do_run(e, font_a, gcells, &index, a, b - a, pt_size);
 
                 a = b;
                 font_a = font_b;
         }
 
-        do_run(e, font_a, glyphs, &index, a, b - a, pt_size);
+        do_run(e, font_a, gcells, &index, a, b - a, pt_size);
 
         assert(index == num_cells);
 

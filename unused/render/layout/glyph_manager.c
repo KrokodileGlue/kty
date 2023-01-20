@@ -367,9 +367,6 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         assert(sizeof vertices == sizeof glyph->vertices);
         memcpy(glyph->vertices, vertices, sizeof vertices);
 
-        printf("%d %d\n", glyph->vertices[0].x, glyph->vertices[0].y);
-        printf("%d %d\n\n", glyph->vertices[4].x, glyph->vertices[4].y);
-
         add_sprite_to_font(m, font, glyph, font_size);
 
         return *glyph;

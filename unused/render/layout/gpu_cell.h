@@ -10,8 +10,9 @@
 #include "vec.h"
 
 struct gpu_cell {
-        struct vec2 vertices[6];
-        struct vec2 texture_coordinates[6];
+        struct ivec2 position;
+        struct ivec2 size;
+        struct ivec2 texture_coordinates[2];
         int tex;
         struct vec3 fg, bg;
 };
