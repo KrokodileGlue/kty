@@ -21,10 +21,10 @@ int main(int argc, char **argv)
         if (!e) return 1;
 
         char *pattern[] = {
-                "Fira Code:regular",
-                "Fira Code:bold",
-                "Fira Code:italic",
-                "Fira Code:bold:italic",
+                "monospace:regular",
+                "monospace:bold",
+                "monospace:italic",
+                "monospace:bold:italic",
                 "emoji",
                 "Noto Serif CJK JP",
                 "Noto Sans Arabic",
@@ -46,15 +46,20 @@ int main(int argc, char **argv)
                         .num_code_point = 1,
                 };
 
+        cells[num_glyph++] = (struct cpu_cell){
+                .c = { 0x201c },
+                .num_code_point = 1,
+        };
+
         struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
 
-        layout(e, cells, glyphs, num_glyph, 24);
+        layout(e, cells, glyphs, num_glyph, 48);
         layout_engine_show(e);
 
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 18, ch = 28;
+        int cw = 32, ch = 52;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -150,7 +155,6 @@ int main(int argc, char **argv)
          *   |   |
          *   +---+
          *  3     2,5
-         *
           */
         struct vec2 vertices[] = {
                 { 0, 1 },
@@ -235,6 +239,11 @@ int main(int argc, char **argv)
                        (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
         }
 
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glClearColor(0.25, 0.5, 0.75, 1.0);
+
+        /* https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object */
 
         /* Begin the main loop. */
 
@@ -242,7 +251,7 @@ int main(int argc, char **argv)
 
         while (!glfwWindowShouldClose(window)) {
                 glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 6, num_glyph);
+                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, num_glyph);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }

@@ -39,7 +39,7 @@ void main()
 
         if (index == 0) {
                 vertex = nw;
-                tvertex = nw;
+                tvertex = tnw;
         } else if (index == 1) {
                 vertex = se;
                 tvertex = tse;
@@ -60,7 +60,7 @@ void main()
         vertex = aPos * nw;
 
         vec2 offset = vec2((gl_InstanceID % col) * cw * sx - 1.0,
-                           (gl_InstanceID / col) * -ch * sy);
+                           (gl_InstanceID / col) * -ch * sy + 1.0);
         gl_Position = vec4(vec2(vertex.x * cw * sx, vertex.y * ch * sy) + offset, 0.0, 1.0);
         out_color = vec3(1.0, (gl_InstanceID % 3) * 1.0, (gl_InstanceID % 2) * 0.5);
         out_tex_coords = tvertex;
