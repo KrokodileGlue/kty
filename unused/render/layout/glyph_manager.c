@@ -256,7 +256,7 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_surface_write_to_png(map->cairo_surface, buf);
 
         static int global = 0;
-        if (global++ == 1) {
+        if (++global == 9) {
                 cairo_surface_t *surface =
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
@@ -333,8 +333,8 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
         hb_font_get_glyph_extents(hb_font, glyph_id, &extents);
 
         struct ivec2 size = {
-                .x = ceil((float)extents.width / 64.0),
-                .y = ceil(-(float)extents.height / 64.0)
+                .x = ceil((float)extents.width / 64.0) + 1,
+                .y = ceil(-(float)extents.height / 64.0) + 1,
         };
 
         struct ivec2 bearing = {

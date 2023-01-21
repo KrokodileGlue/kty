@@ -59,7 +59,7 @@ int main(int argc, char **argv)
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 28, ch = 48;
+        int cw = 30, ch = 52;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -239,3 +239,18 @@ int main(int argc, char **argv)
 
         glfwTerminate();
 }
+
+/*
+ * 1. Move the bitmap_top into the glyph rather than the gpu_cell.
+ *
+ * 2. The gpu_cell should only have a glyph index, and fg/bg colors.
+ *
+ * 3. There should be an array of glyphs in the vertex shader which
+ * each contains a few different fields, including the coordinates in
+ * the sprite sheet and the bitmap_top.
+ *
+ * 4. There should be an array of gpu_cells using the same technique as (3).
+ *
+ * 5. Both the glyph array and the gpu_cell array in the shader should
+ * use a shader storage buffer object.
+ */
