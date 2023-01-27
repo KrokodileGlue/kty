@@ -117,7 +117,7 @@ new_sprite_map(struct font *font, int id)
         FT_Face ft_face = font->ft_face;
         cairo_font_face_t *cairo_face = cairo_ft_font_face_create_for_ft_face(ft_face, 0);
         cairo_set_font_face(cr, cairo_face);
-        cairo_set_font_size(cr, pt_size);
+        /* cairo_set_font_size(cr, pt_size); */
 
         *map = (struct sprite_map){
                 .id            = id,
@@ -221,13 +221,9 @@ add_sprite_to_font(struct glyph_manager *m,
         cairo_glyphs->x -= extents.x_bearing;
         cairo_glyphs->y -= extents.y_bearing;
 
-        struct ivec2 sprite_coordinates[6] = {
+        struct ivec2 sprite_coordinates[2] = {
                 { map->cursor.x                 , map->cursor.y                 },
-                { map->cursor.x + glyph->size.x , map->cursor.y                 },
-                { map->cursor.x                 , map->cursor.y + glyph->size.y },
-                { map->cursor.x                 , map->cursor.y + glyph->size.y },
                 { map->cursor.x + glyph->size.x , map->cursor.y + glyph->size.y },
-                { map->cursor.x + glyph->size.x , map->cursor.y                 },
         };
 
         assert(sizeof sprite_coordinates == sizeof glyph->sprite_coordinates);
@@ -261,8 +257,8 @@ add_sprite_to_font(struct glyph_manager *m,
                         cairo_surface_create_for_rectangle(map->cairo_surface,
                                                            sprite_coordinates[0].x,
                                                            sprite_coordinates[0].y,
-                                                           sprite_coordinates[4].x - sprite_coordinates[0].x,
-                                                           sprite_coordinates[4].y - sprite_coordinates[0].y);
+                                                           sprite_coordinates[1].x - sprite_coordinates[0].x,
+                                                           sprite_coordinates[1].y - sprite_coordinates[0].y);
                 cairo_surface_write_to_png(surface, "a.png");
         }
 #endif
@@ -274,7 +270,7 @@ add_sprite_to_font(struct glyph_manager *m,
 static struct glyph *
 look_up_glyph(struct glyph_manager *m,
               struct font *font,
-              int glyph_id,
+              int codepoint,
               int pt_size)
 {
         /*
@@ -283,7 +279,7 @@ look_up_glyph(struct glyph_manager *m,
         for (unsigned i = 0; i < m->num_glyph; i++) {
                 if (m->glyph[i].pt_size != pt_size) continue;
                 if (m->glyph[i].font != font) continue;
-                if (m->glyph[i].id != glyph_id) continue;
+                if (m->glyph[i].id != codepoint) continue;
                 return m->glyph + i;
         }
 
@@ -316,43 +312,47 @@ new_glyph(struct glyph_manager *m)
 struct glyph
 glyph_manager_generate_glyph(struct glyph_manager *m,
                              struct font *font,
-                             int glyph_id,
+                             int codepoint,
                              int font_size)
 {
         hb_font_t *hb_font = font->hb_font;
-
         hb_font_set_scale(font->hb_font, font_size * 64, font_size * 64);
-
         assert(hb_font);
 
-        struct glyph *glyph = look_up_glyph(m, font, glyph_id, font_size);
+        struct glyph *glyph = look_up_glyph(m, font, codepoint, font_size);
         if (glyph) return *glyph; /* If the glyph already exists then we can just return it. */
         glyph = new_glyph(m);
 
         hb_glyph_extents_t extents;
-        hb_font_get_glyph_extents(hb_font, glyph_id, &extents);
+        hb_font_get_glyph_extents(hb_font, codepoint, &extents);
 
         struct ivec2 size = {
-                .x = ceil((float)extents.width / 64.0) + 1,
-                .y = ceil(-(float)extents.height / 64.0) + 1,
+                .x = ceil((float)extents.width / 64.0) + 2,
+                .y = ceil(-(float)extents.height / 64.0) + 2,
         };
 
-        struct ivec2 bearing = {
-                .x = ceil((float)extents.x_bearing / 64.0),
-                .y = ceil((float)extents.y_bearing / 64.0)
-        };
+        FT_Face face = font->ft_face;
 
-        struct ivec2 vertices[6] = {
-                { bearing.x,          bearing.y },
-                { bearing.x + size.x, bearing.y },
-                { bearing.x,          bearing.y + size.y },
-                { bearing.x,          bearing.y + size.y },
-                { bearing.x + size.x, bearing.y + size.y },
-                { bearing.x + size.x, bearing.y },
-        };
+        /*
+         * TODO: Without this the first loaded glyph doesn't have the
+         * right bitmap font metrics.
+         */
+        FT_Set_Pixel_Sizes(face, 0, font_size);
+
+        if (FT_Load_Glyph(face, codepoint, FT_LOAD_RENDER)) {
+                print(LOG_CRITICAL, "Couldn't load expected character with glyph codepoint 0x%x\n", codepoint);
+                exit(1);
+        }
+
+        FT_GlyphSlot slot = face->glyph;
+
+        if (FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL)) {
+                print(LOG_CRITICAL, "Couldn't render expected character with glyph codepoint 0x%x\n", codepoint);
+                exit(1);
+        }
 
         *glyph = (struct glyph){
-                .id = glyph_id,
+                .id = codepoint,
                 .index = glyph - m->glyph,
                 /* int glyph_sheet; */
                 .pt_size = font_size,
@@ -360,12 +360,9 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .italic = font->italic,
                 .font = font,
                 .size = size,
-                /* struct ivec2 vertices[6]; */
-                /* struct vec2 sprite_coordinates[6]; */
+                .bitmap_left = slot->bitmap_left,
+                .bitmap_top = slot->bitmap_top,
         };
-
-        assert(sizeof vertices == sizeof glyph->vertices);
-        memcpy(glyph->vertices, vertices, sizeof vertices);
 
         add_sprite_to_font(m, font, glyph, font_size);
 

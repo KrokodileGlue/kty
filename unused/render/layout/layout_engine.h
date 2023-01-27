@@ -24,6 +24,6 @@ int layout_engine_add_font_from_name(struct layout_engine *e,
                                      const char *name,
                                      int font_size);
 int layout(struct layout_engine *e, struct cpu_cell *cells,
-           struct gpu_cell *gcells, unsigned num_cells,
+           struct glyph *glyphs, unsigned num_cells,
            int pt_size);
 struct glyph_manager *layout_engine_get_glyph_manager(struct layout_engine *e);

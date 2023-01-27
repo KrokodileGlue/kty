@@ -21,10 +21,10 @@ int main(int argc, char **argv)
         if (!e) return 1;
 
         char *pattern[] = {
-                "monospace:regular",
-                /* "monospace:bold", */
-                /* "monospace:italic", */
-                /* "monospace:bold:italic", */
+                "Fira Code:regular",
+                /* "Fira Code:bold", */
+                /* "Fira Code:italic", */
+                /* "Fira Code:bold:italic", */
                 /* "emoji", */
                 /* "Noto Serif CJK JP", */
                 /* "Noto Sans Arabic", */
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
         unsigned num_glyph = 0;
 
         /* Add all printable ASCII characters. */
-        for (int i = 33; i <= 126; i++)
+        for (int i = '!'; i <= '~'; i++)
                 cells[num_glyph++] = (struct cpu_cell){
                         .c = { i },
                         .num_code_point = 1,
@@ -51,9 +51,9 @@ int main(int argc, char **argv)
                 .num_code_point = 1,
         };
 
-        struct gpu_cell *gcells = calloc(num_glyph, sizeof *gcells);
+        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
 
-        layout(e, cells, gcells, num_glyph, 48);
+        layout(e, cells, glyphs, num_glyph, 48);
         layout_engine_show(e);
 
         if (!glfwInit()) return 1;
@@ -206,18 +206,17 @@ int main(int argc, char **argv)
         for (unsigned i = 0; i < num_glyph; i++) {
                 char tmp[1000];
                 snprintf(tmp, sizeof tmp, "glyph_position[%d]", i);
-                glUniform2i(glGetUniformLocation(program, tmp), gcells[i].position.x, gcells[i].position.y);
-                printf("%d %d\n", gcells[i].position.x, gcells[i].position.y);
+                glUniform2i(glGetUniformLocation(program, tmp), glyphs[i].bitmap_left, glyphs[i].bitmap_top);
                 snprintf(tmp, sizeof tmp, "glyph_vertex[%d]", i);
                 glUniform2f(glGetUniformLocation(program, tmp),
-                            (float)gcells[i].size.x / (float)cw,
-                            -(float)gcells[i].size.y / (float)ch);
+                            (float)glyphs[i].size.x / (float)cw,
+                            -(float)glyphs[i].size.y / (float)ch);
                 snprintf(tmp, sizeof tmp, "glyph_texcoords[%d]", i);
                 glUniform4f(glGetUniformLocation(program, tmp),
-                            (float)gcells[i].texture_coordinates[0].x / (float)sheet.width,
-                            (float)gcells[i].texture_coordinates[1].y / (float)sheet.height,
-                            (float)gcells[i].texture_coordinates[1].x / (float)sheet.width,
-                            (float)gcells[i].texture_coordinates[0].y / (float)sheet.height);
+                            (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
+                            (float)glyphs[i].sprite_coordinates[1].y / (float)sheet.height,
+                            (float)glyphs[i].sprite_coordinates[1].x / (float)sheet.width,
+                            (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
         }
 
         glEnable(GL_BLEND);
@@ -241,7 +240,7 @@ int main(int argc, char **argv)
 }
 
 /*
- * 1. Move the bitmap_top into the glyph rather than the gpu_cell.
+ * 1. Move the bitmap_top into the glyph rather than the gpu_cell. DONE
  *
  * 2. The gpu_cell should only have a glyph index, and fg/bg colors.
  *

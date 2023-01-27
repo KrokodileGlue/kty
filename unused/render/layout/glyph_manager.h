@@ -65,9 +65,11 @@ struct glyph {
 
         struct font *font;
 
+        int bitmap_left;
+        int bitmap_top;
+
         struct ivec2 size;
-        struct ivec2 vertices[6];
-        struct ivec2 sprite_coordinates[6];
+        struct ivec2 sprite_coordinates[2];
 };
 
 struct glyph_manager;

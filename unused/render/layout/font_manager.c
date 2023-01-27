@@ -178,8 +178,10 @@ font_manager_add_font_from_name(struct font_manager *m, const char *name, int fo
         FcPatternDestroy(fc_font);
         FcPatternDestroy(fc_pattern);
 
-        hb_font_set_scale((*head)->hb_font, font_size * 64, font_size * 64);
-
+        /*
+         * TODO: This is where the font size should be set, but
+         * instead it's being set in `glyph_manager_generate_glyph`.
+         */
         font_manager_describe_font(*head);
 
         return 0;
