@@ -10,8 +10,146 @@
 
 #include "layout/layout_engine.h"
 #include "layout/debug.h"
+#include "layout/utf8.h"
+
+#define FONT_SIZE 24
 
 enum debug_level debug_level = LOG_EVERYTHING;
+unsigned program;
+
+static void
+upload_glyphs(struct layout_engine *e, struct basic_font_info info)
+{
+        struct glyph_manager *m = layout_engine_get_glyph_manager(e);
+
+        /* There's only one glyph sheet. */
+        struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, 0);
+
+        for (unsigned i = 0; i < m->num_glyph; i++) {
+                char tmp[1000];
+
+                snprintf(tmp, sizeof tmp, "glyph_position[%d]", i);
+                glUniform2i(glGetUniformLocation(program, tmp),
+                            m->glyph[i].bitmap_left,
+                            m->glyph[i].bitmap_top);
+
+                snprintf(tmp, sizeof tmp, "glyph_tex[%d]", i);
+                glUniform1i(glGetUniformLocation(program, tmp),
+                            m->glyph[i].glyph_sheet);
+
+                int glyph_sheet = m->glyph[i].glyph_sheet;
+                struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, glyph_sheet);
+                snprintf(tmp, sizeof tmp, "glyph_is_color[%d]", i);
+                glUniform1i(glGetUniformLocation(program, tmp),
+                            sheet.format == GLYPH_SHEET_COLOR);
+
+                snprintf(tmp, sizeof tmp, "glyph_vertex[%d]", i);
+                glUniform2f(glGetUniformLocation(program, tmp),
+                            (float)m->glyph[i].size.x / (float)info.cw,
+                            -(float)m->glyph[i].size.y / (float)info.ch);
+
+                snprintf(tmp, sizeof tmp, "glyph_ascender[%d]", i);
+                glUniform1i(glGetUniformLocation(program, tmp), m->glyph[i].ascender);
+
+                snprintf(tmp, sizeof tmp, "glyph_texcoords[%d]", i);
+                glUniform4f(glGetUniformLocation(program, tmp),
+                            (float)m->glyph[i].sprite_coordinates[0].x / (float)sheet.width,
+                            (float)m->glyph[i].sprite_coordinates[1].y / (float)sheet.height,
+                            (float)m->glyph[i].sprite_coordinates[1].x / (float)sheet.width,
+                            (float)m->glyph[i].sprite_coordinates[0].y / (float)sheet.height);
+        }
+
+        /* Now upload the textures. */
+
+        GLsizei width = sheet.width;
+        GLsizei height = sheet.height;
+        GLsizei mipLevelCount = 1;
+
+        int num_alpha = 0, num_color = 0;
+
+        for (unsigned i = 0; i < m->num_sprite_map; i++) {
+                if (m->sprite_map[i]->cairo_format == CAIRO_FORMAT_A8) num_alpha++;
+                else num_color++;
+        }
+
+        GLuint alpha_texture;
+        glGenTextures(1, &alpha_texture);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, alpha_texture);
+        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_R8, width, height, num_alpha);
+
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        for (unsigned i = 0; i < m->num_sprite_map; i++) {
+                if (m->sprite_map[i]->cairo_format != CAIRO_FORMAT_A8) continue;
+                struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, i);
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, width, height, 1, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
+        }
+
+        GLuint color_texture;
+        glGenTextures(1, &color_texture);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, color_texture);
+        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_RGBA8, width, height, num_color);
+
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+        for (unsigned i = 0; i < m->num_sprite_map; i++) {
+                if (m->sprite_map[i]->cairo_format == CAIRO_FORMAT_A8) continue;
+                struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, i);
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, sheet.data);
+        }
+
+        int alpha_texture_location = glGetUniformLocation(program, "alpha_textures");
+        if (alpha_texture_location == GL_INVALID_VALUE || alpha_texture_location == GL_INVALID_OPERATION)
+                printf("alpha texture uniform not found: %d\n", alpha_texture_location);
+
+        int color_texture_location = glGetUniformLocation(program, "color_textures");
+        if (color_texture_location == GL_INVALID_VALUE || color_texture_location == GL_INVALID_OPERATION)
+                printf("color texture uniform not found: %d\n", color_texture_location);
+
+        glUniform1i(alpha_texture_location, 0);
+        glUniform1i(color_texture_location, 1);
+}
+
+static int
+render_text(struct layout_engine *e, const char *s)
+{
+        static int arr[1000];
+        static struct cpu_cell cells[1000];
+
+        int num_glyph = 0;
+
+        for (unsigned i = 0; i < strlen(s); i++) {
+                unsigned len = utf8chrlen(s + i, strlen(s) - i);
+                uint32_t c;
+                utf8decode(s + i, len, &c);
+
+                cells[num_glyph++] = (struct cpu_cell){
+                        .c = { c },
+                        .num_code_point = 1,
+                };
+
+                i += len - 1;
+        }
+
+        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
+
+        layout(e, cells, glyphs, num_glyph, FONT_SIZE);
+
+        for (int i = 0; i < num_glyph; i++)
+                arr[i] = glyphs[i].index;
+
+        glUniform1iv(glGetUniformLocation(program, "glyph_indices"), num_glyph, arr);
+
+        return num_glyph;
+}
 
 int main(int argc, char **argv)
 {
@@ -21,11 +159,11 @@ int main(int argc, char **argv)
         if (!e) return 1;
 
         char *pattern[] = {
-                "monospace:regular",
-                /* "monospace:bold", */
-                /* "monospace:italic", */
-                /* "monospace:bold:italic", */
-                /* "emoji", */
+                "Fira Code:regular",
+                /* "Fira Code:bold", */
+                /* "Fira Code:italic", */
+                /* "Fira Code:bold:italic", */
+                "emoji",
                 /* "Noto Serif CJK JP", */
                 /* "Noto Sans Arabic", */
         };
@@ -36,32 +174,12 @@ int main(int argc, char **argv)
                         return 1;
                 }
 
-        struct cpu_cell *cells = calloc(1000, sizeof *cells);
-        unsigned num_glyph = 0;
-
-        /* Add all printable ASCII characters. */
-        for (int i = '!'; i <= '~'; i++)
-                cells[num_glyph++] = (struct cpu_cell){
-                        .c = { i },
-                        .num_code_point = 1,
-                };
-
-        cells[num_glyph++] = (struct cpu_cell){
-                .c = { 0x201c },
-                .num_code_point = 1,
-        };
-
-        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
-
-        layout(e, cells, glyphs, num_glyph, 24);
-        layout_engine_show(e);
-
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
 
         struct basic_font_info info;
-        layout_engine_get_basic_font_info(e, &info, 24);
+        layout_engine_get_basic_font_info(e, &info, FONT_SIZE);
 
         int ascender = info.ascender;
         int cw = info.cw, ch = info.ch;
@@ -136,7 +254,7 @@ int main(int argc, char **argv)
         }
 
         /* Create the program. */
-        unsigned program = glCreateProgram();
+        program = glCreateProgram();
         glAttachShader(program, vertex_shader);
         glAttachShader(program, fragment_shader);
         glLinkProgram(program);
@@ -144,8 +262,9 @@ int main(int argc, char **argv)
         glGetProgramiv(program, GL_LINK_STATUS, &success);
 
         if (!success) {
-                glGetProgramInfoLog(program, 512, NULL, buf);
+                glGetProgramInfoLog(program, sizeof infoLog, NULL, infoLog);
                 puts("linking failed");
+                puts(infoLog);
                 exit(1);
         }
 
@@ -182,21 +301,6 @@ int main(int argc, char **argv)
         glBufferData(GL_ARRAY_BUFFER, sizeof vertices, vertices, GL_STATIC_DRAW);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof *vertices, 0);
 
-        struct glyph_manager *m = layout_engine_get_glyph_manager(e);
-
-        /* There's only one glyph sheet. */
-        struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, 0);
-
-        unsigned texture;
-        glGenTextures(1, &texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, sheet.width, sheet.height,
-                     0, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
-
         glUniform1i(glGetUniformLocation(program, "ascender"), ascender);
 
         glUniform1i(glGetUniformLocation(program, "width"), width);
@@ -210,22 +314,6 @@ int main(int argc, char **argv)
 
         glUniform1i(glGetUniformLocation(program, "spritemap"), 0);
 
-        for (unsigned i = 0; i < num_glyph; i++) {
-                char tmp[1000];
-                snprintf(tmp, sizeof tmp, "glyph_position[%d]", i);
-                glUniform2i(glGetUniformLocation(program, tmp), glyphs[i].bitmap_left, glyphs[i].bitmap_top);
-                snprintf(tmp, sizeof tmp, "glyph_vertex[%d]", i);
-                glUniform2f(glGetUniformLocation(program, tmp),
-                            (float)glyphs[i].size.x / (float)cw,
-                            -(float)glyphs[i].size.y / (float)ch);
-                snprintf(tmp, sizeof tmp, "glyph_texcoords[%d]", i);
-                glUniform4f(glGetUniformLocation(program, tmp),
-                            (float)glyphs[i].sprite_coordinates[0].x / (float)sheet.width,
-                            (float)glyphs[i].sprite_coordinates[1].y / (float)sheet.height,
-                            (float)glyphs[i].sprite_coordinates[1].x / (float)sheet.width,
-                            (float)glyphs[i].sprite_coordinates[0].y / (float)sheet.height);
-        }
-
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glClearColor(0, 0, 0, 1.0);
@@ -236,46 +324,15 @@ int main(int argc, char **argv)
 
         glfwSwapBuffers(window);
 
-        static int arr[4096];
-        for (int i = 0; i < row * col; i++)
-                arr[i] = abs(rand()) % num_glyph;
-
-        char *string = "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.";
-        num_glyph = 0;
-        for (unsigned i = 0; i < strlen(string); i++)
-                cells[num_glyph++] = (struct cpu_cell){
-                        .c = { string[i] },
-                        .num_code_point = 1,
-                };
-        glyphs = calloc(num_glyph, sizeof *glyphs);
-        layout(e, cells, glyphs, num_glyph, 24);
-        for (unsigned i = 0; i < num_glyph; i++)
-                arr[i] = glyphs[i].index;
-        for (unsigned i = 0; i < num_glyph; i++)
-                printf("%d\n", arr[i]);
-        glUniform1iv(glGetUniformLocation(program, "glyph_indices"), num_glyph, arr);
+        int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> ->");
+        upload_glyphs(e, info);
 
         while (!glfwWindowShouldClose(window)) {
                 glClear(GL_COLOR_BUFFER_BIT);
                 glDrawArraysInstanced(GL_TRIANGLES, 0, 6, num_glyph);
                 glfwSwapBuffers(window);
-                glfwPollEvents();
+                glfwWaitEventsTimeout(0.5);
         }
 
         glfwTerminate();
 }
-
-/*
- * 1. Move the bitmap_top into the glyph rather than the gpu_cell. DONE
- *
- * 2. The gpu_cell should only have a glyph index, and fg/bg colors.
- *
- * 3. There should be an array of glyphs in the vertex shader which
- * each contains a few different fields, including the coordinates in
- * the sprite sheet and the bitmap_top.
- *
- * 4. There should be an array of gpu_cells using the same technique as (3).
- *
- * 5. Both the glyph array and the gpu_cell array in the shader should
- * use a shader storage buffer object.
- */

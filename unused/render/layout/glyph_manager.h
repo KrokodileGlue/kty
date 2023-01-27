@@ -13,6 +13,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <cairo/cairo.h>
+#include <cairo/cairo-ft.h>
+
 #include "config.h"
 #include "cpu_cell.h"
 #include "vec.h"
@@ -68,11 +71,50 @@ struct glyph {
         int bitmap_left;
         int bitmap_top;
 
+        int ascender;
+
         struct ivec2 size;
         struct ivec2 sprite_coordinates[2];
 };
 
-struct glyph_manager;
+struct glyph_manager {
+        /* Cairo sprite map for each font */
+        struct sprite_map {
+                /*
+                 * This surface is the CPU texture object from which
+                 * we can extract information to send to the GPU.
+                 */
+                cairo_surface_t *cairo_surface;
+
+                /*
+                 * For regular alpha fonts this will have format
+                 * `CAIRO_FORMAT_A8` and for color fonts (i.e. emoji)
+                 * it will have `CAIRO_FORMAT_ARGB32`.
+                 */
+                cairo_format_t cairo_format;
+                cairo_font_face_t *cairo_face;
+                cairo_t *cr;
+
+                int width, height;
+                struct ivec2 cursor;
+                struct font *font;
+
+                bool is_full;
+
+                int next_line;
+                unsigned num_glyph;
+
+                int id;
+        } **sprite_map;
+
+        unsigned capacity_sprite_map;
+        unsigned num_sprite_map;
+
+        struct glyph *glyph;
+
+        unsigned capacity_glyph;
+        unsigned num_glyph;
+};
 
 struct glyph_manager *glyph_manager_create(void);
 int glyph_manager_init(struct glyph_manager *m);

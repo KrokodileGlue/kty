@@ -22,45 +22,6 @@
 #include "glyph_manager.h"
 #include "font_manager.h"
 
-struct glyph_manager {
-        /* Cairo sprite map for each font */
-        struct sprite_map {
-                /*
-                 * This surface is the CPU texture object from which
-                 * we can extract information to send to the GPU.
-                 */
-                cairo_surface_t *cairo_surface;
-
-                /*
-                 * For regular alpha fonts this will have format
-                 * `CAIRO_FORMAT_A8` and for color fonts (i.e. emoji)
-                 * it will have `CAIRO_FORMAT_ARGB32`.
-                 */
-                cairo_format_t cairo_format;
-                cairo_font_face_t *cairo_face;
-                cairo_t *cr;
-
-                int width, height;
-                struct ivec2 cursor;
-                struct font *font;
-
-                bool is_full;
-
-                int next_line;
-                unsigned num_glyph;
-
-                int id;
-        } **sprite_map;
-
-        unsigned capacity_sprite_map;
-        unsigned num_sprite_map;
-
-        struct glyph *glyph;
-
-        unsigned capacity_glyph;
-        unsigned num_glyph;
-};
-
 struct glyph_manager *
 glyph_manager_create(void)
 {
@@ -351,6 +312,9 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 exit(1);
         }
 
+#define FONT_UNITS_TO_PIXELS(face,x)                                    \
+        (int)(((float)font_size * ((float)(x) / (float)face->units_per_EM)))
+
         *glyph = (struct glyph){
                 .id = codepoint,
                 .index = glyph - m->glyph,
@@ -359,6 +323,7 @@ glyph_manager_generate_glyph(struct glyph_manager *m,
                 .bold = font->bold,
                 .italic = font->italic,
                 .font = font,
+                .ascender = face->descender ? 0 : -font_size,
                 .size = size,
                 .bitmap_left = slot->bitmap_left,
                 .bitmap_top = slot->bitmap_top,

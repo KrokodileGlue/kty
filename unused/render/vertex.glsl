@@ -2,8 +2,6 @@
 
 in vec2 aPos;
 
-uniform int ascender;
-
 uniform int width;
 uniform int height;
 
@@ -13,14 +11,21 @@ uniform int ch;
 uniform int row;
 uniform int col;
 
+uniform int ascender;
+
 uniform ivec2 glyph_position[1000];
 uniform vec2 glyph_vertex[1000];
 uniform vec4 glyph_texcoords[1000];
+uniform int glyph_is_color[1000];
+uniform int glyph_ascender[1000];
+uniform int glyph_tex[1000];
 
 uniform int glyph_indices[4096];
 
 out vec3 out_color;
 out vec2 out_tex_coords;
+flat out int tex;
+flat out int is_color;
 
 // gl_VertexID
 
@@ -57,7 +62,13 @@ void main()
         vec2 offset = vec2((gl_InstanceID % col) * cw * sx - 1.0,
                            (gl_InstanceID / col + 1) * -ch * sy + 1.0);
         offset += vec2(sx, sy) * glyph_position[glyph_index];
-        offset.y += sy * -ascender;
+        if (glyph_ascender[glyph_index] != 0) {
+                offset.y += sy * -glyph_ascender[glyph_index] + -sy * ascender / 2;
+        } else {
+                offset.y += -sy * ascender;
+        }
         gl_Position = vec4(vec2(vertex.x * cw * sx, vertex.y * ch * sy) + offset, 0.0, 1.0);
         out_tex_coords = tvertex;
+        tex = glyph_tex[glyph_index];
+        is_color = glyph_is_color[glyph_index];
 }
