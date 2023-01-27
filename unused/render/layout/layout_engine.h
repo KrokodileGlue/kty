@@ -15,6 +15,12 @@
 #include "gpu_cell.h"
 #include "glyph_manager.h"
 
+struct basic_font_info {
+        int cw;
+        int ch;
+        int ascender;
+};
+
 struct layout_engine;
 
 struct layout_engine *layout_engine_create(void);
@@ -26,4 +32,7 @@ int layout_engine_add_font_from_name(struct layout_engine *e,
 int layout(struct layout_engine *e, struct cpu_cell *cells,
            struct glyph *glyphs, unsigned num_cells,
            int pt_size);
+int layout_engine_get_basic_font_info(struct layout_engine *e,
+                                      struct basic_font_info *info,
+                                      int pt_size);
 struct glyph_manager *layout_engine_get_glyph_manager(struct layout_engine *e);

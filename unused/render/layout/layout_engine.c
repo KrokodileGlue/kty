@@ -178,3 +178,36 @@ layout_engine_get_glyph_manager(struct layout_engine *e)
 {
         return e->gm;
 }
+
+#define FONT_UNITS_TO_PIXELS(face,x)            \
+        (int)(((float)pt_size * ((float)(x) / (float)face->units_per_EM)))
+
+int
+layout_engine_get_basic_font_info(struct layout_engine *e,
+                                  struct basic_font_info *info,
+                                  int pt_size)
+{
+        struct font *font = font_manager_get_font(e->fm, (uint32_t []){'x'}, 1, 0, 0, pt_size);
+        FT_Face face = font->ft_face;
+        FT_Set_Pixel_Sizes(face, 0, pt_size);
+
+        if (FT_Load_Glyph(face, 'x', FT_LOAD_RENDER)) {
+                print(LOG_CRITICAL, "Couldn't load `x'\n");
+                exit(1);
+        }
+
+        FT_GlyphSlot slot = face->glyph;
+
+        if (FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL)) {
+                print(LOG_CRITICAL, "Couldn't render `x'\n");
+                exit(1);
+        }
+
+        *info = (struct basic_font_info){
+                .cw = slot->metrics.horiAdvance / 64,
+                .ch = slot->metrics.vertAdvance / 64,
+                .ascender = FONT_UNITS_TO_PIXELS(face, face->descender),
+        };
+
+        return 0;
+}

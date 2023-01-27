@@ -55,7 +55,7 @@ void main()
         vec2 vertex = aPos * glyph_vertex[glyph_index];
 
         vec2 offset = vec2((gl_InstanceID % col) * cw * sx - 1.0,
-                           (gl_InstanceID / col) * -ch * sy + 1.0);
+                           (gl_InstanceID / col + 1) * -ch * sy + 1.0);
         offset += vec2(sx, sy) * glyph_position[glyph_index];
         offset.y += sy * -ascender;
         gl_Position = vec4(vec2(vertex.x * cw * sx, vertex.y * ch * sy) + offset, 0.0, 1.0);

@@ -21,10 +21,10 @@ int main(int argc, char **argv)
         if (!e) return 1;
 
         char *pattern[] = {
-                "Fira Code:regular",
-                /* "Fira Code:bold", */
-                /* "Fira Code:italic", */
-                /* "Fira Code:bold:italic", */
+                "monospace:regular",
+                /* "monospace:bold", */
+                /* "monospace:italic", */
+                /* "monospace:bold:italic", */
                 /* "emoji", */
                 /* "Noto Serif CJK JP", */
                 /* "Noto Sans Arabic", */
@@ -53,13 +53,18 @@ int main(int argc, char **argv)
 
         struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
 
-        layout(e, cells, glyphs, num_glyph, 18);
+        layout(e, cells, glyphs, num_glyph, 24);
         layout_engine_show(e);
 
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 12, ch = 16 * 1.5;
+
+        struct basic_font_info info;
+        layout_engine_get_basic_font_info(e, &info, 24);
+
+        int ascender = info.ascender;
+        int cw = info.cw, ch = info.ch;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -232,17 +237,27 @@ int main(int argc, char **argv)
         glfwSwapBuffers(window);
 
         static int arr[4096];
+        for (int i = 0; i < row * col; i++)
+                arr[i] = abs(rand()) % num_glyph;
+
+        char *string = "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum.";
+        num_glyph = 0;
+        for (unsigned i = 0; i < strlen(string); i++)
+                cells[num_glyph++] = (struct cpu_cell){
+                        .c = { string[i] },
+                        .num_code_point = 1,
+                };
+        glyphs = calloc(num_glyph, sizeof *glyphs);
+        layout(e, cells, glyphs, num_glyph, 24);
+        for (unsigned i = 0; i < num_glyph; i++)
+                arr[i] = glyphs[i].index;
+        for (unsigned i = 0; i < num_glyph; i++)
+                printf("%d\n", arr[i]);
+        glUniform1iv(glGetUniformLocation(program, "glyph_indices"), num_glyph, arr);
 
         while (!glfwWindowShouldClose(window)) {
-                for (int i = 0; i < row * col; i++)
-                        arr[i] = abs(rand()) % num_glyph;
-
-                glUniform1iv(glGetUniformLocation(program, "glyph_indices"), row * col, arr);
-
-                usleep(1000000 / 10);
-
                 glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, row * col);
+                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, num_glyph);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
