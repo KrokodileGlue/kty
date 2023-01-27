@@ -53,13 +53,13 @@ int main(int argc, char **argv)
 
         struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
 
-        layout(e, cells, glyphs, num_glyph, 48);
+        layout(e, cells, glyphs, num_glyph, 18);
         layout_engine_show(e);
 
         if (!glfwInit()) return 1;
 
         int width = 800, height = 602;
-        int cw = 30, ch = 52;
+        int cw = 12, ch = 16 * 1.5;
         int col = width / cw, row = height / ch;
 
         GLFWwindow *window = glfwCreateWindow(width, height, argv[0], 0, 0);
@@ -192,6 +192,8 @@ int main(int argc, char **argv)
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, sheet.width, sheet.height,
                      0, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
 
+        glUniform1i(glGetUniformLocation(program, "ascender"), ascender);
+
         glUniform1i(glGetUniformLocation(program, "width"), width);
         glUniform1i(glGetUniformLocation(program, "height"), height);
 
@@ -221,7 +223,7 @@ int main(int argc, char **argv)
 
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glClearColor(0.25, 0.5, 0.75, 1.0);
+        glClearColor(0, 0, 0, 1.0);
 
         /* https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object */
 
@@ -229,9 +231,18 @@ int main(int argc, char **argv)
 
         glfwSwapBuffers(window);
 
+        static int arr[4096];
+
         while (!glfwWindowShouldClose(window)) {
+                for (int i = 0; i < row * col; i++)
+                        arr[i] = abs(rand()) % num_glyph;
+
+                glUniform1iv(glGetUniformLocation(program, "glyph_indices"), row * col, arr);
+
+                usleep(1000000 / 10);
+
                 glClear(GL_COLOR_BUFFER_BIT);
-                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, num_glyph);
+                glDrawArraysInstanced(GL_TRIANGLES, 0, 6, row * col);
                 glfwSwapBuffers(window);
                 glfwPollEvents();
         }
