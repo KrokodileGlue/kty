@@ -12,9 +12,9 @@
 #include "layout/debug.h"
 #include "layout/utf8.h"
 
-#define FONT_SIZE 16
+#define FONT_SIZE 28
 
-enum debug_level debug_level = LOG_EVERYTHING;
+enum debug_level debug_level = LOG_CRITICAL;
 unsigned program;
 
 static void
@@ -313,20 +313,13 @@ int main(int argc, char **argv)
         glUniform1i(glGetUniformLocation(program, "col"), col);
         glUniform1i(glGetUniformLocation(program, "row"), row);
 
-        glUniform1i(glGetUniformLocation(program, "spritemap"), 0);
-
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glClearColor(0, 0, 0, 1.0);
 
-        /* https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object */
-
-        /* Begin the main loop. */
-
         glfwSwapBuffers(window);
 
         int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> -> بلغة يونيكود. تسجّل الآن لحضور المؤتمر ");
-        /* int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> ->"); */
         upload_glyphs(e, info);
 
         while (!glfwWindowShouldClose(window)) {
