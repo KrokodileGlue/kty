@@ -12,7 +12,7 @@
 #include "layout/debug.h"
 #include "layout/utf8.h"
 
-#define FONT_SIZE 24
+#define FONT_SIZE 16
 
 enum debug_level debug_level = LOG_EVERYTHING;
 unsigned program;
@@ -76,7 +76,7 @@ upload_glyphs(struct layout_engine *e, struct basic_font_info info)
         glGenTextures(1, &alpha_texture);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D_ARRAY, alpha_texture);
-        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_R8, width, height, num_alpha);
+        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_R8, width, height, m->num_sprite_map);
 
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -86,14 +86,14 @@ upload_glyphs(struct layout_engine *e, struct basic_font_info info)
         for (unsigned i = 0; i < m->num_sprite_map; i++) {
                 if (m->sprite_map[i]->cairo_format != CAIRO_FORMAT_A8) continue;
                 struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, i);
-                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, width, height, 1, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, i, width, height, 1, GL_RED, GL_UNSIGNED_BYTE, sheet.data);
         }
 
         GLuint color_texture;
         glGenTextures(1, &color_texture);
         glActiveTexture(GL_TEXTURE0 + 1);
         glBindTexture(GL_TEXTURE_2D_ARRAY, color_texture);
-        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_RGBA8, width, height, num_color);
+        glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevelCount, GL_RGBA8, width, height, m->num_sprite_map);
 
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -103,7 +103,7 @@ upload_glyphs(struct layout_engine *e, struct basic_font_info info)
         for (unsigned i = 0; i < m->num_sprite_map; i++) {
                 if (m->sprite_map[i]->cairo_format == CAIRO_FORMAT_A8) continue;
                 struct glyph_sheet sheet = glyph_manager_get_glyph_sheet(m, i);
-                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, sheet.data);
+                glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, i, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, sheet.data);
         }
 
         int alpha_texture_location = glGetUniformLocation(program, "alpha_textures");
@@ -124,14 +124,14 @@ render_text(struct layout_engine *e, const char *s)
         static int arr[1000];
         static struct cpu_cell cells[1000];
 
-        int num_glyph = 0;
+        int num_cells = 0;
 
         for (unsigned i = 0; i < strlen(s); i++) {
                 unsigned len = utf8chrlen(s + i, strlen(s) - i);
                 uint32_t c;
                 utf8decode(s + i, len, &c);
 
-                cells[num_glyph++] = (struct cpu_cell){
+                cells[num_cells++] = (struct cpu_cell){
                         .c = { c },
                         .num_code_point = 1,
                 };
@@ -139,16 +139,17 @@ render_text(struct layout_engine *e, const char *s)
                 i += len - 1;
         }
 
-        struct glyph *glyphs = calloc(num_glyph, sizeof *glyphs);
+        struct glyph *glyphs = calloc(2 * num_cells, sizeof *glyphs);
 
-        layout(e, cells, glyphs, num_glyph, FONT_SIZE);
+        unsigned num_glyphs = 0;
+        layout(e, cells, num_cells, glyphs, &num_glyphs, FONT_SIZE);
 
-        for (int i = 0; i < num_glyph; i++)
+        for (unsigned i = 0; i < num_glyphs; i++)
                 arr[i] = glyphs[i].index;
 
-        glUniform1iv(glGetUniformLocation(program, "glyph_indices"), num_glyph, arr);
+        glUniform1iv(glGetUniformLocation(program, "glyph_indices"), num_glyphs, arr);
 
-        return num_glyph;
+        return num_glyphs;
 }
 
 int main(int argc, char **argv)
@@ -160,12 +161,12 @@ int main(int argc, char **argv)
 
         char *pattern[] = {
                 "Fira Code:regular",
-                /* "Fira Code:bold", */
-                /* "Fira Code:italic", */
-                /* "Fira Code:bold:italic", */
+                "Fira Code:bold",
+                "Fira Code:italic",
+                "Fira Code:bold:italic",
                 "emoji",
-                /* "Noto Serif CJK JP", */
-                /* "Noto Sans Arabic", */
+                "Noto Serif CJK JP",
+                "Noto Sans Arabic",
         };
 
         for (unsigned i = 0; i < sizeof pattern / sizeof *pattern; i++)
@@ -324,7 +325,8 @@ int main(int argc, char **argv)
 
         glfwSwapBuffers(window);
 
-        int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> ->");
+        int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> -> بلغة يونيكود. تسجّل الآن لحضور المؤتمر ");
+        /* int num_glyph = render_text(e, "https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object what's up :) => ---- xD - honk ! <🤔 > as well as perhaps a (😎) Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard 🤣 dummy text ever since the 1500s, when an unknown printer took a galley of type and scrambled it to make a type specimen book. It has survived not only five centuries, but also the leap into electronic typesetting, remaining essentially unchanged. It was popularised in the 1960s with the release of Letraset 🤔 sheets containing Lorem Ipsum passages, and more recently with desktop publishing software like Aldus PageMaker including versions of Lorem Ipsum. <=> ->"); */
         upload_glyphs(e, info);
 
         while (!glfwWindowShouldClose(window)) {

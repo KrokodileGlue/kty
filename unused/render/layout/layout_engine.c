@@ -65,14 +65,14 @@ layout_engine_add_font_from_name(struct layout_engine *e,
  */
 static void
 do_run(struct layout_engine *e, struct font *font,
-       struct glyph *glyphs, unsigned *len,
-       struct cpu_cell *a, unsigned num,
+       struct cpu_cell *a, unsigned num_cells,
+       struct glyph *glyphs, unsigned *num_glyphs,
        int pt_size)
 {
         hb_buffer_t *buf = hb_buffer_create();
         hb_buffer_set_content_type(buf, HB_BUFFER_CONTENT_TYPE_UNICODE);
 
-        for (unsigned i = 0; i < num; i++)
+        for (unsigned i = 0; i < num_cells; i++)
                 for (unsigned j = 0; j < a[i].num_code_point; j++)
                         hb_buffer_add(buf, a[i].c[j], 0);
 
@@ -97,7 +97,7 @@ do_run(struct layout_engine *e, struct font *font,
 
         /* TODO: Use the glyph_info positioning. Only relevant for weird languages like Arabic. */
         for (unsigned i = 0; i < glyph_count; i++)
-                glyphs[(*len)++] = glyph_manager_generate_glyph(e->gm, font, glyph_info[i].codepoint, pt_size);
+                glyphs[(*num_glyphs)++] = glyph_manager_generate_glyph(e->gm, font, glyph_info[i].codepoint, pt_size);
 }
 
 #define FONT_FOR_CELL(x)                                                \
@@ -117,13 +117,13 @@ do_run(struct layout_engine *e, struct font *font,
  * shaped is if they were written in sequence as one line of text.
  */
 int
-layout(struct layout_engine *e, struct cpu_cell *cells,
-       struct glyph *glyphs, unsigned num_cells, int pt_size)
+layout(struct layout_engine *e,
+       struct cpu_cell *cells, unsigned num_cells,
+       struct glyph *glyphs, unsigned *num_glyphs,
+       int pt_size)
 {
         struct cpu_cell *a = cells, *b = cells;
         struct font *font_b = NULL, *font_a = FONT_FOR_CELL(a);
-
-        unsigned index = 0;
 
         /*
          * Parse the input cells with two pointers `a` and `b`. The
@@ -145,15 +145,13 @@ layout(struct layout_engine *e, struct cpu_cell *cells,
                         continue;
                 }
 
-                do_run(e, font_a, glyphs, &index, a, b - a, pt_size);
+                do_run(e, font_a, a, b - a, glyphs, num_glyphs, pt_size);
 
                 a = b;
                 font_a = font_b;
         }
 
-        do_run(e, font_a, glyphs, &index, a, b - a, pt_size);
-
-        assert(index == num_cells);
+        do_run(e, font_a, a, b - a, glyphs, num_glyphs, pt_size);
 
         return 0;
 }
