@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <harfbuzz/hb-ft.h>
+#include <ctype.h>              /* isspace */
 
 #include "debug.h"
 #include "layout_engine.h"
@@ -133,6 +134,14 @@ layout(struct layout_engine *e,
 
         while (b < cells + num_cells) {
                 font_b = FONT_FOR_CELL(b);
+
+                /*
+                 * TODO(HACK): Find a better solution for this. This
+                 * hack helps runs like يونيكود. تسجّ stick
+                 * together. It seems like kitty actually handles this
+                 * incorrectly. Bug report?
+                 */
+                if (isspace(b->c[0]) || b->c[0] == '.') font_b = font_a;
 
                 if (!font_a) {
                         font_a = font_b;
