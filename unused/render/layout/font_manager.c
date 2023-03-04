@@ -191,6 +191,7 @@ static bool
 font_has_glyph_for_sequence(struct font *font,
                             uint32_t *utf32, unsigned len)
 {
+        (void)len;
         return hb_font_get_glyph(font->hb_font,
                                  utf32[0],
                                  0,

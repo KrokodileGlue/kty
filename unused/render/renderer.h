@@ -7,5 +7,9 @@ struct renderer {
         unsigned program;
 };
 
+struct canvas;
+
 int renderer_init(struct renderer *r);
-int renderer_render_text(struct renderer *r, const char *s);
+int renderer_begin(struct renderer *r);
+int renderer_upload_glyphs(struct renderer *r);
+int renderer_render_canvas(struct renderer *r, struct canvas *c);

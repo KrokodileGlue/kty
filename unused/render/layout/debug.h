@@ -12,7 +12,7 @@ enum debug_level {
 extern enum debug_level debug_level;
 
 #define print(level,...) do {                                           \
-        if (level >= debug_level) {                                     \
+        if ((level) >= debug_level) {                                     \
                 char _print_buf[100];                                   \
                 strftime(_print_buf, sizeof _print_buf,                 \
                          "%H:%M.%S", localtime(&(time_t){time(0)}));    \
