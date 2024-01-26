@@ -23,14 +23,14 @@ int font_manager_init(struct font_manager *m)
         } path[] = {
                 //{ "Minecraft.ttf", FONT_REGULAR },
                 //{ "PixelOperatorMono8.ttf", FONT_REGULAR },
-                { "SourceCodePro-Regular.otf", FONT_REGULAR },
-                { "SourceCodePro-Bold.otf", FONT_BOLD },
-                { "SourceCodePro-It.otf", FONT_ITALIC },
-                { "SourceCodePro-BoldIt.otf", FONT_BOLD | FONT_ITALIC },
+                { "SourceCodePro-Regular.ttf", FONT_REGULAR },
+                { "SourceCodePro-Bold.ttf", FONT_BOLD },
+                { "SourceCodePro-Italic.ttf", FONT_ITALIC },
+                { "SourceCodePro-BoldItalic.ttf", FONT_BOLD | FONT_ITALIC },
                 { "NotoColorEmoji.ttf", FONT_REGULAR },
-                { "NotoSansCJK-Regular.ttc", FONT_REGULAR },
-                { "TibMachUni-1.901b.ttf", FONT_REGULAR },
-                { "DejaVuSansMono.ttf", FONT_REGULAR },
+                //{ "NotoSansCJK-Regular.ttc", FONT_REGULAR },
+                //{ "TibMachUni-1.901b.ttf", FONT_REGULAR },
+                //{ "DejaVuSansMono.ttf", FONT_REGULAR },
         };
 
         for (unsigned i = 0; i < sizeof path / sizeof *path; i++) {

@@ -290,7 +290,7 @@ int main(int argc, char **argv)
         if (!glfwInit()) return 1;
 
         /* TODO: Make the default window size configurable. */
-        window = glfwCreateWindow(300, 300, argv[0], 0, 0);
+        window = glfwCreateWindow(1280, 720, argv[0], 0, 0);
 
         if (!window) {
                 glfwTerminate();
